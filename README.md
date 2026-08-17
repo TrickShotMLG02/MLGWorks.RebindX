@@ -32,7 +32,11 @@ For a production backend such as cloud saves, implement `IBindingOverrideStore` 
 - The Input System package's `InputActionAsset`, `InputActionReference`, and interactive rebinding APIs.
 - The included `MLGWorks.Utils` dependency. Keep the `MLGWorks.Utils` submodule checked out when using the source repository.
 
-The runtime assembly is `MLGWorks.RebindX`. The test assembly is `MLGWorks.RebindX.Tests` and is Editor-only.
+The core runtime assembly is `MLGWorks.RebindX`. The optional UI assembly is `MLGWorks.RebindX.UI`; it contains `RebindActionUI` and its custom inspector and depends on TextMeshPro and Unity Localization. Projects that only need persistence and rebinding services can reference the core assembly without the UI integrations. The test assemblies are `MLGWorks.RebindX.Tests` (EditMode) and `MLGWorks.RebindX.PlayModeTests` (PlayMode).
+
+### Optional UI dependencies
+
+Install or enable TextMeshPro and Unity Localization before using `RebindActionUI`. If those packages are not part of your project, use `MLGWorks.RebindX` directly and provide your own UI around `InputActionReference`, `RebindOptions`, and `IBindingOverrideService`.
 
 ## Basic setup
 

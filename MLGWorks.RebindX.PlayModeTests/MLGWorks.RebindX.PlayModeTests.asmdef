@@ -1,27 +1,22 @@
 {
-    "name": "MLGWorks.RebindX.Tests",
-    "rootNamespace": "MLGWorks.RebindX.Tests",
+    "name": "MLGWorks.RebindX.PlayModeTests",
+    "rootNamespace": "MLGWorks.RebindX.PlayModeTests",
     "references": [
         "GUID:c6ae65f4e57fb4249b69c918e4066e06",
         "GUID:2d7a7f6e0d4f4e3e9bb8d6a1c5f3a2e1",
         "GUID:75469ad4d38634e559750d17036d5f7c",
-        "GUID:dc04f38471c3a459fb4d31124ee9127d",
-        "GUID:9440d5481d78b0e4a9bc9fd7ede8c8bc"
+        "GUID:dc04f38471c3a459fb4d31124ee9127d"
     ],
     "optionalUnityReferences": [
         "TestAssemblies"
     ],
-    "includePlatforms": [
-        "Editor"
-    ],
+    "includePlatforms": [],
     "excludePlatforms": [],
     "allowUnsafeCode": false,
     "overrideReferences": false,
     "precompiledReferences": [],
-    "autoReferenced": true,
-    "defineConstraints": [
-        "UNITY_INCLUDE_TESTS"
-    ],
+    "autoReferenced": false,
+    "defineConstraints": [],
     "versionDefines": [],
     "noEngineReferences": false
 }
