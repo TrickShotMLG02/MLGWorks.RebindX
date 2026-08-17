@@ -47,3 +47,20 @@ sysinfo.txt
 
 # Crashlytics generated file
 crashlytics-build.properties
+
+# RebindX documentation (keep source and final PDF; ignore LaTeX intermediates)
+Documentation/*.aux
+Documentation/*.bbl
+Documentation/*.bcf
+Documentation/*.blg
+Documentation/*.fdb_latexmk
+Documentation/*.fls
+Documentation/*.lof
+Documentation/*.log
+Documentation/*.lot
+Documentation/*.out
+Documentation/*.run.xml
+Documentation/*.synctex.gz
+Documentation/*.toc
+Documentation/*.xdv
+Documentation/_build/

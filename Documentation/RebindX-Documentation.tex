@@ -1,0 +1,386 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage[a4paper,margin=2.4cm]{geometry}
+\usepackage{microtype}
+\usepackage{xcolor}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{enumitem}
+\usepackage{hyperref}
+\usepackage{listings}
+\usepackage{fancyhdr}
+
+\definecolor{codebg}{RGB}{247,248,250}
+\definecolor{codeblue}{RGB}{30,75,140}
+\definecolor{codegray}{RGB}{90,90,90}
+\definecolor{linkblue}{RGB}{0,70,140}
+
+\hypersetup{colorlinks=true,linkcolor=linkblue,urlcolor=linkblue,citecolor=linkblue}
+\lstdefinestyle{csharp}{language=[Sharp]C,backgroundcolor=\color{codebg},basicstyle=\ttfamily\small,keywordstyle=\color{codeblue}\bfseries,commentstyle=\color{codegray}\itshape,stringstyle=\color{brown},breaklines=true,showstringspaces=false,frame=single,rulecolor=\color{gray!35},columns=fullflexible}
+\lstdefinestyle{plain}{backgroundcolor=\color{codebg},basicstyle=\ttfamily\small,breaklines=true,showstringspaces=false,frame=single,rulecolor=\color{gray!35},columns=fullflexible}
+
+\pagestyle{fancy}
+\fancyhf{}
+\setlength{\headheight}{14pt}
+\lhead{MLGWorks RebindX}
+\rhead{User and Integration Guide}
+\cfoot{\thepage}
+
+\title{\textbf{MLGWorks RebindX}\\[0.4em]\large Complete User and Integration Guide}
+\author{MLGWorks}
+\date{\today}
+
+\newcommand{\class}[1]{\texttt{#1}}
+\newcommand{\pathref}[1]{\texttt{#1}}
+\newcommand{\warning}[1]{\paragraph{Important.} #1}
+
+\begin{document}
+\maketitle
+\begin{abstract}
+MLGWorks RebindX is a Unity Input System asset for building reliable key-binding and controller-binding menus. It supports ordinary bindings, composite bindings, multiple profiles, versioned persistence, conflict detection and resolution, device-aware prompts, accessibility notifications, custom storage backends, generated control wrappers, and testable runtime services. This guide is written for both first-time Unity users and developers integrating RebindX into a larger production project.
+\end{abstract}
+\tableofcontents
+\newpage
+
+\section{What RebindX does}
+RebindX changes Unity Input System binding \emph{overrides} at runtime. It does not rewrite the original \pathref{.inputactions} asset. The default bindings remain intact, which means a player can reset settings, a developer can update the asset, and a new profile can start from clean defaults.
+
+The package has two runtime assemblies:
+\begin{itemize}[nosep]
+  \item \class{MLGWorks.RebindX}: core services, persistence, profiles, options, and manager APIs.
+  \item \class{MLGWorks.RebindX.UI}: \class{RebindActionUI}, device-aware display helpers, and the custom Inspector. It is optional and requires TextMeshPro and Unity Localization in the current package setup.
+\end{itemize}
+
+The source repository also contains separate EditMode and PlayMode test assemblies. They test RebindX behavior, not \class{MLGWorks.Utils}.
+
+\section{Requirements and installation}
+\subsection{Requirements}
+Use a Unity project with:
+\begin{itemize}
+  \item Unity's Input System package enabled.
+  \item An \class{InputActionAsset} or a generated \class{PlayerInputControls} wrapper.
+  \item TextMeshPro and Unity Localization if you use \class{RebindActionUI}.
+  \item The repository's \class{MLGWorks.Utils} dependency when using the source layout.
+\end{itemize}
+
+If you distribute RebindX as a package, keep one compatible Utils version in the consuming project. Do not place several different copies of the same Utils assembly in one Unity project; that causes duplicate type and assembly-resolution problems.
+
+\subsection{Installation checklist}
+\begin{enumerate}
+  \item Copy or install the RebindX folder under the Unity \pathref{Assets} directory.
+  \item Open Package Manager and install/enable Input System, TextMeshPro, and Localization as appropriate.
+  \item Allow Unity to finish importing and compiling assemblies.
+  \item Open \textbf{Window > General > Test Runner} and run the RebindX tests before integrating into a production scene.
+\end{enumerate}
+
+\section{The quickest working setup}
+\subsection{1. Create an Input Actions asset}
+Choose \textbf{Assets > Create > Input Actions}. Create an action map, an action, and at least one binding. A minimal example is:
+\begin{lstlisting}[style=plain]
+Gameplay
+  Jump       Button       <Keyboard>/space
+  Move       Value        2D Vector composite
+    Up                    <Keyboard>/w
+    Down                  <Keyboard>/s
+    Left                  <Keyboard>/a
+    Right                 <Keyboard>/d
+\end{lstlisting}
+Save the asset and make sure the action names and binding groups are correct. RebindX uses binding GUIDs, so do not manually depend on an array index in your own code.
+
+\subsection{2. Add a Rebind Manager}
+Create an active GameObject, add \class{RebindManager}, and assign the Input Action Asset. One manager can own one asset and one active profile. Multiple managers are supported; this is useful for local multiplayer or separate input contexts.
+
+The manager enables the managed asset and loads overrides during startup. If you use a generated controls wrapper, assign it through the corresponding manager configuration or call \class{SetControls} from code. Keep the manager alive while settings rows are active.
+
+\subsection{3. Choose persistence}
+The Inspector offers three storage locations:
+\begin{description}[style=nextline,leftmargin=2.8cm]
+  \item[PersistentDataPath] Recommended for player settings and shipped games.
+  \item[DataPath] Useful for development tools; generally not writable in a player build.
+  \item[Custom] An explicitly supplied directory. It must not be empty.
+\end{description}
+The default file is a versioned JSON file below a \pathref{Configs} directory. RebindX creates missing directories when saving.
+
+\subsection{4. Add one UI row}
+Create a settings row GameObject and add \class{RebindActionUI}. Assign:
+\begin{enumerate}
+  \item An \class{InputActionReference} in \textbf{Action}.
+  \item The intended \class{RebindManager} explicitly.
+  \item A binding through the custom Inspector's \textbf{Binding} popup.
+  \item Optional TextMeshPro fields for the binding label, action label, and prompt.
+  \item Optional overlay and UnityEvent listeners.
+\end{enumerate}
+At runtime the row can be connected to a button:
+\begin{lstlisting}[style=csharp]
+using MLGWorks.RebindX.Runtime;
+using UnityEngine;
+
+public sealed class RebindButton : MonoBehaviour
+{
+    [SerializeField] private RebindActionUI row;
+
+    public void Begin() => row.StartInteractiveRebind();
+    public void Cancel() => row.CancelInteractiveRebind();
+    public void Reset() => row.ResetToDefault();
+}
+\end{lstlisting}
+
+\warning{The UI row needs a valid action reference and binding GUID. If either is missing, RebindX will refuse to rebind rather than guessing a binding.}
+
+\section{How a rebind works}
+When \class{StartInteractiveRebind} is called, RebindX creates a Unity \class{RebindingOperation}, disables the target action as needed, waits for an eligible control, applies the override, checks conflicts, updates the display, saves, and restores the original action/map/asset enabled state.
+
+Cancellation is safe while idle and during an active operation. The previous effective binding is restored when a rebind is cancelled, times out, is interrupted by device removal, or the row is disabled/destroyed.
+
+\subsection{Rebind options}
+\class{RebindOptions} controls the accepted input and conflict behavior:
+\begin{longtable}{p{0.31\textwidth}p{0.59\textwidth}}
+\toprule
+\textbf{Option} & \textbf{Meaning}\\
+\midrule
+\endhead
+\class{bindingGroup} & Restricts the operation to a control scheme/group.\\
+\class{controlPathsToMatch} & Allow-list of control paths.\\
+\class{controlPathsToExclude} & Deny-list of control paths.\\
+\class{cancelControlPath} & Control that cancels the operation; default is Escape.\\
+\class{expectedControlType} & Requires a type such as Button or Stick.\\
+\class{minimumMagnitude} & Ignores weak input below this magnitude.\\
+\class{timeoutSeconds} & Cancels after the given duration; zero disables timeout.\\
+\class{cancelWhenDeviceIsRemoved} & Cancels if the active device disappears.\\
+\class{maximumDuplicateRetries} & Number of retries after a rejected conflict.\\
+\class{duplicateBindingScope} & Checks the same action map or the entire asset.\\
+\class{duplicateBindingPolicy} & Legacy Reject/Allow policy.\\
+\class{duplicateBindingResolution} & Reject, Allow, Replace, or Swap.\\
+\bottomrule
+\end{longtable}
+
+Example:
+\begin{lstlisting}[style=csharp]
+row.rebindOptions = new RebindOptions
+{
+    bindingGroup = "Gamepad",
+    expectedControlType = "Button",
+    timeoutSeconds = 15f,
+    maximumDuplicateRetries = 2,
+    duplicateBindingScope = DuplicateBindingScope.EntireAsset
+};
+row.rebindOptions.controlPathsToExclude.Add("<Gamepad>/leftStick");
+\end{lstlisting}
+
+\section{Composite bindings}
+A composite is one logical binding made of multiple parts, for example a 2D movement binding with Up, Down, Left, and Right. Create composites in Unity's Input Actions editor as usual.
+
+For a whole-composite row, select the composite header. RebindX walks the parts in order. It clears old composite overrides before displaying freshly bound parts; this prevents default paths and stale overrides from appearing together. If the operation is cancelled, the old overrides are restored.
+
+You may also create one row per part. This is useful when the UI has separate controls for each direction. Always ensure each row references the intended binding GUID and manager.
+
+\section{Duplicate handling and conflict resolution}
+RebindX detects collisions within the configured scope and respects control-scheme groups. A binding in an unrelated exclusive scheme is not considered a conflict; ungrouped bindings are treated as global.
+
+\begin{description}[style=nextline,leftmargin=3.4cm]
+  \item[Reject] Keep the old binding, report the conflict, and optionally retry.
+  \item[Allow] Permit duplicate controls. The legacy \class{duplicateBindingPolicy} setting has precedence for compatibility.
+  \item[Replace] Keep the newly selected control and remove the conflicting binding's override.
+  \item[Swap] Exchange the target's previous effective path with the conflicting binding's path.
+\end{description}
+
+Subscribe to \class{duplicateBindingEvent} for a user-facing message and \class{duplicateResolutionEvent} for the selected resolution. A retry limit of zero rejects immediately. This makes conflict behavior deterministic and suitable for keyboard, gamepad, and multiple-control-scheme settings screens.
+
+\section{Profiles}
+Profiles provide stable IDs, display names, and independent override files. They are useful for keyboard/controller presets, multiple local players, accessibility layouts, or separate control schemes.
+\begin{lstlisting}[style=csharp]
+manager.CreateProfile("keyboard", "Keyboard and Mouse");
+manager.CreateProfile("gamepad", "Controller");
+manager.SwitchProfile("gamepad");
+manager.RenameProfile("gamepad", "Xbox Controller");
+\end{lstlisting}
+The active profile cannot be deleted. Profile IDs must be safe file identifiers. Switching saves the current profile, clears active overrides, and loads the selected profile. Profile metadata is stored beside the configured binding file.
+
+\section{Persistence and recovery}
+The JSON store writes a versioned envelope containing:
+\begin{itemize}
+  \item the format version;
+  \item an asset or profile identity;
+  \item Unity's binding-overrides JSON.
+\end{itemize}
+Before replacing a save, RebindX writes a temporary file. A malformed file is not silently applied: it is moved to a timestamped \pathref{.corrupt-*.json} quarantine file and a \class{CorruptData} result is returned. A file for a different asset/profile returns \class{AssetMismatch}; unsupported future versions return \class{UnsupportedVersion}.
+
+The service result is available to callers:
+\begin{lstlisting}[style=csharp]
+BindingOverrideResult result = manager.SaveRebinds();
+if (!result.Succeeded)
+    Debug.LogWarning($"Could not save controls: {result.Code} {result.Message}");
+\end{lstlisting}
+Possible result codes include \class{Success}, \class{NoData}, \class{InvalidAsset}, \class{InvalidPath}, \class{AssetMismatch}, \class{UnsupportedVersion}, \class{CorruptData}, and \class{IoFailure}.
+
+\section{Resetting and changing assets}
+Reset one row with \class{ResetToDefault}. Reset the whole manager with \class{ResetRebinds}; this removes active overrides and deletes the persisted file. Explicit \class{SaveRebinds} and \class{LoadRebinds} are useful for Apply/Discard workflows.
+
+For dynamically loaded assets:
+\begin{lstlisting}[style=csharp]
+public void UseAsset(InputActionAsset asset)
+{
+    rebindManager.SetActionAsset(asset);
+}
+\end{lstlisting}
+The previous asset is disabled, the new asset is enabled, and the configured overrides are loaded. Passing null is rejected. Generated wrappers can be provided through \class{SetControls}; the manager disposes the wrapper it owns when it is replaced.
+
+\section{Device-aware displays and prompts}
+The UI assembly includes \class{IDeviceBindingDisplayProvider}. The default provider normalizes layouts into \class{Keyboard}, \class{Mouse}, \class{Gamepad}, \class{Joystick}, \class{Touchscreen}, \class{XR}, \class{Pen}, or \class{Unknown}. It also produces stable glyph keys such as \pathref{keyboard.enter}, \pathref{mouse.left\_button}, and \pathref{gamepad.button\_south}.
+
+Use \class{deviceBindingDisplayEvent} to connect the result to a sprite atlas, glyph font, or localized prompt system:
+\begin{lstlisting}[style=csharp]
+row.deviceBindingDisplayEvent.AddListener((source, device, glyph, prompt) =>
+{
+    glyphView.SetGlyph(glyph);
+    promptLabel.text = prompt;
+});
+\end{lstlisting}
+For a project-specific naming scheme, implement the provider:
+\begin{lstlisting}[style=csharp]
+public sealed class MyGlyphProvider : IDeviceBindingDisplayProvider
+{
+    public BindingDeviceKind GetDeviceKind(string layout, string path)
+        => layout.Contains("Gamepad") ? BindingDeviceKind.Gamepad : BindingDeviceKind.Unknown;
+
+    public string GetGlyphKey(string layout, string path)
+        => path == "<Gamepad>/buttonSouth" ? "xbox-a" : "generic-control";
+
+    public string GetPrompt(string layout, string path, string type = null)
+        => "Press the controller button";
+}
+row.bindingDisplayProvider = new MyGlyphProvider();
+\end{lstlisting}
+
+\section{Accessibility and UI events}
+Use \class{rebindAccessibilityEvent} to announce states such as waiting for input, cancelled, timed out, or device removed. Use it with a screen reader, large-text status label, haptic feedback, or audio cue.
+
+Other useful events include binding-display updates, start/stop rebind notifications, duplicate conflict notifications, timeout notifications, and device-aware display updates. Overlay objects are active only during an operation and are hidden on every cleanup path.
+
+Localization can be handled by listening to these events and passing the prompt or status key through the project's localization system. This keeps the core binding logic independent from a particular UI language implementation.
+
+\section{Cloud saves and custom integration}
+\subsection{Custom persistence}
+Implement \class{IBindingOverrideStore} when storage is not a local JSON file. The interface receives the active \class{InputActionAsset}; it does not own the manager or the asset lifecycle.
+\begin{lstlisting}[style=csharp]
+public sealed class CloudOverrideStore : IBindingOverrideStore
+{
+    private string json;
+
+    public BindingOverrideResult Save(InputActionAsset asset)
+    {
+        json = asset.SaveBindingOverridesAsJson();
+        // Queue json for your authenticated cloud service.
+        return BindingOverrideResult.Success("Queued for cloud upload.");
+    }
+
+    public BindingOverrideResult Load(InputActionAsset asset)
+    {
+        if (string.IsNullOrEmpty(json))
+            return BindingOverrideResult.NoData("No cloud data available.");
+        asset.LoadBindingOverridesFromJson(json);
+        return BindingOverrideResult.Success("Loaded from cloud.");
+    }
+
+    public BindingOverrideResult Delete()
+    {
+        json = null;
+        // Delete the remote profile in your backend here.
+        return BindingOverrideResult.Success("Cloud profile deleted.");
+    }
+}
+\end{lstlisting}
+Assign the store before saving or loading. For asynchronous cloud APIs, queue the operation and return a result that accurately describes whether the request was accepted; apply downloaded JSON on the main thread because Unity Input System objects are Unity-owned state.
+
+\subsection{Custom paths}
+Implement \class{IRebindPathProvider} when the file name or directory comes from a platform service. Always return a stable, writable path, keep player-specific data outside source control, and validate profile identifiers before incorporating them into a path.
+
+\subsection{Custom asset ownership}
+Use \class{IInputActionAssetProvider} when your project creates or destroys assets dynamically. The provider should clearly define who owns disposal and should restore enabled state consistently. Avoid having several systems independently enable or disable the same asset.
+
+\section{Recommended production architecture}
+For a small project, a manager and a row per binding are enough. For a larger project, use this separation:
+\begin{verbatim}
+Settings screen
+  -> RebindActionUI rows
+  -> RebindManager facade
+       -> RebindSession
+       -> IBindingOverrideStore
+       -> IRebindPathProvider
+       -> IInputActionAssetProvider
+\end{verbatim}
+Inject manager references instead of searching the scene. Use one manager per asset/profile context, make cloud synchronization explicit, and display save failures to the player or telemetry system.
+
+\section{Testing and release checklist}
+Before shipping, verify:
+\begin{itemize}
+  \item ordinary keyboard, mouse, and gamepad bindings;
+  \item composite headers and individual composite parts;
+  \item cancellation, timeout, disable, destruction, and device removal;
+  \item duplicate rejection, retry limits, Allow, Replace, and Swap;
+  \item separate control schemes and multiple profiles;
+  \item reset, save, load, missing file, corrupt file, mismatch, and unsupported version;
+  \item a read-only or unavailable save location;
+  \item scene reload, domain reload, and multiple managers;
+  \item accessibility announcements and localized prompts;
+  \item cloud conflict policy and offline behavior.
+\end{itemize}
+
+Run the included EditMode and PlayMode tests in Unity Test Runner. Add project-specific PlayMode tests for actual devices and UI navigation; synthetic rebinding operations do not always reproduce every platform's native event processing.
+
+\section{Troubleshooting}
+\begin{description}[style=nextline,leftmargin=4.0cm]
+  \item[The default key is displayed after a reset.] A reset intentionally removes the override, so Unity displays the original default binding. Start a new rebind to create a fresh override.
+  \item[Several rows show the same key.] Check duplicate scope and resolution policy. Use Reject for exclusive controls or Replace/Swap for a clear one-control-per-action layout.
+  \item[My saved settings do not load.] Check the active profile, file path, asset identity, and result code. An asset mismatch is a safety feature, not a parsing failure.
+  \item[The file is marked corrupt.] Inspect the quarantined file for diagnostics, then let RebindX create a clean save. Do not load arbitrary JSON without validating its source.
+  \item[The rebind prompt never finishes.] Check binding groups, excluded paths, expected control type, minimum magnitude, and whether the device is connected.
+  \item[The UI does not compile.] Install TextMeshPro and Localization, or reference only the core assembly and build a custom UI.
+  \item[Multiple Utils versions conflict.] Keep one compatible Utils assembly in the project, update all assets together, or distribute a coordinated package dependency.
+\end{description}
+
+\section{API summary}
+\begin{longtable}{p{0.38\textwidth}p{0.52\textwidth}}
+\toprule
+\textbf{Type/API} & \textbf{Purpose}\\
+\midrule
+\endhead
+\class{RebindManager} & Unity-facing owner and facade for an input asset and persistence.\\
+\class{RebindActionUI} & Interactive row for one binding or composite part.\\
+\class{RebindOptions} & Input filters, timeout, device removal, and conflict policy.\\
+\class{RebindProfile} & Stable profile ID and display name.\\
+\class{IBindingOverrideStore} & Replaceable persistence backend.\\
+\class{JsonBindingOverrideStore} & Versioned, asset-scoped local JSON storage.\\
+\class{InMemoryBindingOverrideStore} & Non-file storage for tests and temporary contexts.\\
+\class{IRebindPathProvider} & Replaceable file path resolution.\\
+\class{IInputActionAssetProvider} & Replaceable asset/wrapper ownership.\\
+\class{IDeviceBindingDisplayProvider} & Device kind, glyph key, and prompt mapping.\\
+\class{BindingOverrideResult} & Explicit persistence outcome and diagnostic message.\\
+\bottomrule
+\end{longtable}
+
+\section{Versioning and support}
+Treat saved override files as user data. Do not delete them during an application update unless the asset identity or profile migration requires it. If the input asset changes substantially, preserve the old file for recovery and provide a user-facing Reset Controls action.
+
+For support requests, record the RebindX version, Unity version, Input System version, active profile, result code, and whether the issue affects local or cloud persistence. Avoid logging complete player-identifying data or unrelated input settings.
+
+\section{Final quick-start checklist}
+\begin{enumerate}
+  \item Install Input System and optional UI dependencies.
+  \item Create an Input Action Asset with maps, actions, bindings, and composites.
+  \item Add and configure one \class{RebindManager}.
+  \item Choose PersistentDataPath for player settings.
+  \item Add \class{RebindActionUI} rows and assign binding GUIDs with the Inspector.
+  \item Decide Reject, Allow, Replace, or Swap conflict behavior.
+  \item Add profiles if more than one layout or player is needed.
+  \item Connect device display, accessibility, and persistence events.
+  \item Test cancellation, reset, duplicate controls, corrupt saves, and device removal.
+  \item Ship the final PDF and source documentation with your asset or internal integration guide.
+\end{enumerate}
+
+\end{document}
