@@ -26,6 +26,8 @@ namespace MLGWorks.RebindX.Runtime.Editors
             m_UpdateBindingUIEventProperty = serializedObject.FindProperty("m_UpdateBindingUIEvent");
             m_RebindStartEventProperty = serializedObject.FindProperty("m_RebindStartEvent");
             m_RebindStopEventProperty = serializedObject.FindProperty("m_RebindStopEvent");
+            m_RebindOptionsProperty = serializedObject.FindProperty("m_RebindOptions");
+            m_DuplicateBindingEventProperty = serializedObject.FindProperty("m_DuplicateBindingEvent");
             m_DisplayStringOptionsProperty = serializedObject.FindProperty("m_DisplayStringOptions");
             m_TitleLocalizationProperty = serializedObject.FindProperty("m_titleLocalization");
             m_DescriptionLocalizationProperty = serializedObject.FindProperty("m_descriptionLocalization");
@@ -79,6 +81,14 @@ namespace MLGWorks.RebindX.Runtime.Editors
                 EditorGUILayout.PropertyField(m_RebindStartEventProperty);
                 EditorGUILayout.PropertyField(m_RebindStopEventProperty);
                 EditorGUILayout.PropertyField(m_UpdateBindingUIEventProperty);
+                EditorGUILayout.PropertyField(m_DuplicateBindingEventProperty);
+            }
+
+            EditorGUILayout.Space();
+            EditorGUILayout.LabelField("Rebind Policy", Styles.boldLabel);
+            using (new EditorGUI.IndentLevelScope())
+            {
+                EditorGUILayout.PropertyField(m_RebindOptionsProperty, true);
             }
 
             // Localization section.
@@ -181,6 +191,8 @@ namespace MLGWorks.RebindX.Runtime.Editors
         private SerializedProperty m_RebindStartEventProperty;
         private SerializedProperty m_RebindStopEventProperty;
         private SerializedProperty m_UpdateBindingUIEventProperty;
+        private SerializedProperty m_RebindOptionsProperty;
+        private SerializedProperty m_DuplicateBindingEventProperty;
         private SerializedProperty m_DisplayStringOptionsProperty;
         private SerializedProperty m_TitleLocalizationProperty;
         private SerializedProperty m_DescriptionLocalizationProperty;

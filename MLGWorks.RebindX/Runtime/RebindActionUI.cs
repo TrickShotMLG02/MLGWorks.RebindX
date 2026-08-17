@@ -190,6 +190,22 @@ namespace MLGWorks.RebindX.Runtime
         /// </summary>
         public InputActionRebindingExtensions.RebindingOperation ongoingRebind => m_RebindOperation;
 
+        public RebindOptions rebindOptions
+        {
+            get => m_RebindOptions;
+            set => m_RebindOptions = value ?? new RebindOptions();
+        }
+
+        public DuplicateBindingEvent duplicateBindingEvent
+        {
+            get
+            {
+                if (m_DuplicateBindingEvent == null)
+                    m_DuplicateBindingEvent = new DuplicateBindingEvent();
+                return m_DuplicateBindingEvent;
+            }
+        }
+
         /// <summary>
         /// Return the action and binding index for the binding that is targeted by the component
         /// according to
@@ -346,6 +362,7 @@ namespace MLGWorks.RebindX.Runtime
             }
             else
             {
+                m_OriginalBindingOverride = action.bindings[bindingIndex].overridePath;
                 PerformInteractiveRebind(action, bindingIndex);
             }
         }
@@ -355,7 +372,7 @@ namespace MLGWorks.RebindX.Runtime
             m_RebindOperation?.Cancel();
         }
 
-        private void PerformInteractiveRebind(InputAction action, int bindingIndex, bool allCompositeParts = false)
+        private void PerformInteractiveRebind(InputAction action, int bindingIndex, bool allCompositeParts = false, int duplicateRetryCount = 0)
         {
             m_RebindOperation?.Cancel(); // Will null out m_RebindOperation.
 
@@ -371,10 +388,34 @@ namespace MLGWorks.RebindX.Runtime
             }
 
             // Configure the rebind.
-            m_RebindOperation = action.PerformInteractiveRebinding(bindingIndex)
-                //.WithControlsHavingToMatchPath("<Keyboard>")
-                //.WithControlsHavingToMatchPath("<Gamepad>")
-                //.WithControlsExcluding("<Keyboard>/escape")
+            var options = m_RebindOptions ?? new RebindOptions();
+            m_RebindOperation = action.PerformInteractiveRebinding(bindingIndex);
+            if (!string.IsNullOrWhiteSpace(options.bindingGroup))
+                m_RebindOperation.WithBindingGroup(options.bindingGroup);
+            if (!string.IsNullOrWhiteSpace(options.cancelControlPath))
+                m_RebindOperation.WithCancelingThrough(options.cancelControlPath);
+            if (!string.IsNullOrWhiteSpace(options.expectedControlType))
+                m_RebindOperation.WithExpectedControlType(options.expectedControlType);
+            if (options.minimumMagnitude > 0)
+                m_RebindOperation.WithMagnitudeHavingToBeGreaterThan(options.minimumMagnitude);
+            if (options.controlPathsToMatch != null)
+            {
+                foreach (var path in options.controlPathsToMatch)
+                {
+                    if (!string.IsNullOrWhiteSpace(path))
+                        m_RebindOperation.WithControlsHavingToMatchPath(path);
+                }
+            }
+            if (options.controlPathsToExclude != null)
+            {
+                foreach (var path in options.controlPathsToExclude)
+                {
+                    if (!string.IsNullOrWhiteSpace(path))
+                        m_RebindOperation.WithControlsExcluding(path);
+                }
+            }
+
+            m_RebindOperation
                 .OnCancel(
                     operation =>
                     {
@@ -390,6 +431,7 @@ namespace MLGWorks.RebindX.Runtime
                         */
                         UpdateBindingDisplay();
                         SetRebindOverlayVisible(false);
+                        m_OriginalBindingOverride = null;
                         CleanUp();
                     })
                 .OnComplete(
@@ -397,17 +439,50 @@ namespace MLGWorks.RebindX.Runtime
                     {
                         m_RebindStopEvent?.Invoke(this, operation);
 
-                        // check for duplicates
-                        if (CheckDuplicateBinding(action, bindingIndex, allCompositeParts))
+                        // Check for duplicates before accepting the new binding.
+                        if (options.duplicateBindingPolicy == DuplicateBindingPolicy.Reject &&
+                            CheckDuplicateBinding(action, bindingIndex, allCompositeParts, out var conflictingAction))
                         {
+                            var conflictingPath = action.bindings[bindingIndex].effectivePath;
+                            duplicateBindingEvent.Invoke(this, conflictingAction?.name ?? "Unknown", conflictingPath);
                             action.RemoveBindingOverride(bindingIndex);
+                            if (allCompositeParts)
+                            {
+                                RestoreCompositeOverrides(action);
+                                CleanUp();
+                                m_CompositeOverrideBackup = null;
+                                m_RebindOperation = null;
+                                if (duplicateRetryCount < Math.Max(0, options.maximumDuplicateRetries))
+                                {
+                                    var compositeHeaderIndex = FindCompositeHeaderIndex(action, bindingIndex);
+                                    BeginCompositeRebind(action, compositeHeaderIndex);
+                                    PerformInteractiveRebind(action, compositeHeaderIndex + 1, true, duplicateRetryCount + 1);
+                                }
+                                else
+                                {
+                                    UpdateBindingDisplay();
+                                    SetRebindOverlayVisible(false);
+                                }
+                                return;
+                            }
+
+                            if (!string.IsNullOrEmpty(m_OriginalBindingOverride))
+                                action.ApplyBindingOverride(bindingIndex, m_OriginalBindingOverride);
                             CleanUp();
-                            PerformInteractiveRebind(action, bindingIndex, allCompositeParts);
+                            if (duplicateRetryCount < Math.Max(0, options.maximumDuplicateRetries))
+                                PerformInteractiveRebind(action, bindingIndex, false, duplicateRetryCount + 1);
+                            else
+                            {
+                                m_OriginalBindingOverride = null;
+                                UpdateBindingDisplay();
+                                SetRebindOverlayVisible(false);
+                            }
                             return;
                         }
 
                         UpdateBindingDisplay();
                         CleanUp();
+                        m_OriginalBindingOverride = null;
 
                         // If there's more composite parts we should bind, initiate a rebind
                         // for the next part.
@@ -582,8 +657,13 @@ namespace MLGWorks.RebindX.Runtime
 
         private bool CheckDuplicateBinding(InputAction action, int bindingIndex, bool allCompositeParts = false)
         {
+            return CheckDuplicateBinding(action, bindingIndex, allCompositeParts, out _);
+        }
+
+        private bool CheckDuplicateBinding(InputAction action, int bindingIndex, bool allCompositeParts, out InputAction conflictingAction)
+        {
+            conflictingAction = null;
             InputBinding newBinding = action.bindings[bindingIndex];
-            // TODO: display error message to user on UI
             foreach (InputBinding binding in action.actionMap.bindings)
             {
                 if (binding.action == newBinding.action)
@@ -593,7 +673,7 @@ namespace MLGWorks.RebindX.Runtime
 
                 if (binding.effectivePath == newBinding.effectivePath)
                 {
-                    Debug.Log("Duplicate binding found for : " + binding.action.ToString() + " and " + newBinding.action.ToString() + " at " + newBinding.effectivePath);
+                    conflictingAction = action.actionMap.FindAction(binding.action, throwIfNotFound: false);
                     return true;
                 }
             }
@@ -614,13 +694,24 @@ namespace MLGWorks.RebindX.Runtime
                         !string.IsNullOrEmpty(previousPart.effectivePath) &&
                         previousPart.effectivePath == newBinding.effectivePath)
                     {
-                        Debug.Log("Duplicate composite binding found at " + newBinding.effectivePath);
+                        conflictingAction = action;
                         return true;
                     }
                 }
             }
 
             return false;
+        }
+
+        private int FindCompositeHeaderIndex(InputAction action, int bindingIndex)
+        {
+            for (var i = bindingIndex; i >= 0; --i)
+            {
+                if (action.bindings[i].isComposite)
+                    return i;
+            }
+
+            return bindingIndex;
         }
 
         private void SaveRebinds()
@@ -816,9 +907,18 @@ namespace MLGWorks.RebindX.Runtime
         [SerializeField]
         private InteractiveRebindEvent m_RebindStopEvent;
 
+        [Tooltip("Controls accepted, excluded, and conflict behavior for interactive rebinding.")]
+        [SerializeField]
+        private RebindOptions m_RebindOptions = new RebindOptions();
+
+        [Tooltip("Event raised when a proposed binding conflicts with another binding.")]
+        [SerializeField]
+        private DuplicateBindingEvent m_DuplicateBindingEvent;
+
         private InputActionRebindingExtensions.RebindingOperation m_RebindOperation;
         private RebindSession m_RebindSession;
         private Dictionary<int, string> m_CompositeOverrideBackup;
+        private string m_OriginalBindingOverride;
 
         private static List<RebindActionUI> s_RebindActionUIs;
 
@@ -856,6 +956,11 @@ namespace MLGWorks.RebindX.Runtime
 
         [Serializable]
         public class InteractiveRebindEvent : UnityEvent<RebindActionUI, InputActionRebindingExtensions.RebindingOperation>
+        {
+        }
+
+        [Serializable]
+        public class DuplicateBindingEvent : UnityEvent<RebindActionUI, string, string>
         {
         }
     }

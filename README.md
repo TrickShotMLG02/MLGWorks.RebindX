@@ -120,6 +120,27 @@ public class RebindButton : MonoBehaviour
 
 The session also restores the original action-map and action-asset enabled states. A rebind cannot accidentally enable unrelated actions that were disabled before the operation.
 
+### Rebind policy
+
+Each `RebindActionUI` has a **Rebind Policy** configuration. It can restrict accepted controls with binding groups, required control paths, excluded paths, expected control types, and a minimum magnitude. The default cancel control is `<Keyboard>/escape`.
+
+Duplicate bindings are rejected by default. RebindX raises `duplicateBindingEvent` with the conflicting action name and control path, restores the previous binding, and retries up to **Maximum Duplicate Retries**. Set `Duplicate Binding Policy` to `Allow` when duplicate controls are intentional. A retry limit of zero rejects the attempted binding and ends the operation immediately.
+
+The same options are available from code:
+
+```csharp
+rebindRow.rebindOptions = new RebindOptions
+{
+    bindingGroup = "Gamepad",
+    expectedControlType = "Button",
+    maximumDuplicateRetries = 2,
+    duplicateBindingPolicy = DuplicateBindingPolicy.Reject
+};
+rebindRow.rebindOptions.controlPathsToExclude.Add("<Gamepad>/leftStick");
+```
+
+Subscribe to `duplicateBindingEvent` to display a user-facing conflict message. Its arguments are the row, the conflicting action name, and the rejected control path.
+
 ## Display and UI events
 
 `RebindActionUI` supports optional UnityEvents for UI systems that do not use TextMeshPro directly:

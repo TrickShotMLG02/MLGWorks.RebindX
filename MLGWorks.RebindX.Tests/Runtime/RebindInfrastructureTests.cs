@@ -349,5 +349,31 @@ namespace MLGWorks.RebindX.Tests
         {
             Assert.Throws<System.ArgumentNullException>(() => new GeneratedControlsProvider(null));
         }
+
+        [Test]
+        public void RebindOptions_CloneCopiesPolicyWithoutSharingPathLists()
+        {
+            var options = new RebindOptions
+            {
+                bindingGroup = "Keyboard&Mouse",
+                cancelControlPath = "<Keyboard>/escape",
+                expectedControlType = "Button",
+                minimumMagnitude = 0.2f,
+                maximumDuplicateRetries = 4,
+                duplicateBindingPolicy = DuplicateBindingPolicy.Allow
+            };
+            options.controlPathsToMatch.Add("<Keyboard>");
+            options.controlPathsToExclude.Add("<Keyboard>/escape");
+
+            var clone = options.Clone();
+            clone.controlPathsToMatch.Add("<Gamepad>");
+            clone.controlPathsToExclude.Clear();
+
+            Assert.That(clone.bindingGroup, Is.EqualTo(options.bindingGroup));
+            Assert.That(clone.minimumMagnitude, Is.EqualTo(options.minimumMagnitude));
+            Assert.That(clone.duplicateBindingPolicy, Is.EqualTo(options.duplicateBindingPolicy));
+            Assert.That(options.controlPathsToMatch, Has.Count.EqualTo(1));
+            Assert.That(options.controlPathsToExclude, Has.Count.EqualTo(1));
+        }
     }
 }

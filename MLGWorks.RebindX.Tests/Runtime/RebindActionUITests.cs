@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 using NUnit.Framework;
 using UnityEngine;
@@ -351,11 +352,152 @@ namespace MLGWorks.RebindX.Tests
             move.ApplyBindingOverride(compositeIndex + 1, "<Gamepad>/buttonSouth");
             move.ApplyBindingOverride(compositeIndex + 2, "<Gamepad>/buttonSouth");
 
-            var method = typeof(RebindActionUI).GetMethod("CheckDuplicateBinding", BindingFlags.Instance | BindingFlags.NonPublic);
-            LogAssert.Expect(LogType.Log, "Duplicate composite binding found at <Gamepad>/buttonSouth");
+            var method = System.Linq.Enumerable.Single(
+                typeof(RebindActionUI).GetMethods(BindingFlags.Instance | BindingFlags.NonPublic),
+                candidate => candidate.Name == "CheckDuplicateBinding" && candidate.GetParameters().Length == 3);
             var duplicate = (bool)method.Invoke(m_UI, new object[] { move, compositeIndex + 2, true });
 
             Assert.That(duplicate, Is.True);
+        }
+
+        [Test]
+        public void DuplicateBinding_RejectedWithEventAndOriginalOverrideRestored()
+        {
+            m_Action.actionMap.Disable();
+            m_Action.actionMap.AddAction("Pause", InputActionType.Button, binding: "<Keyboard>/space");
+            m_Action.actionMap.Enable();
+            m_Action.ApplyBindingOverride(0, "<Keyboard>/enter");
+            m_UI.rebindOptions = new RebindOptions { maximumDuplicateRetries = 0 };
+            var conflicts = new List<string>();
+            m_UI.duplicateBindingEvent.AddListener((_, actionName, path) => conflicts.Add(actionName + ":" + path));
+
+            m_UI.StartInteractiveRebind();
+            m_Action.ApplyBindingOverride(0, "<Keyboard>/space");
+            m_UI.ongoingRebind.Complete();
+
+            Assert.That(conflicts, Has.Count.EqualTo(1));
+            Assert.That(conflicts[0], Does.Contain("Pause"));
+            Assert.That(conflicts[0], Does.Contain("<Keyboard>/space"));
+            Assert.That(m_Action.bindings[0].overridePath, Is.EqualTo("<Keyboard>/enter"));
+            Assert.That(m_UI.ongoingRebind, Is.Null);
+        }
+
+        [Test]
+        public void DuplicateBinding_AllowPolicyKeepsConflictingOverride()
+        {
+            m_Action.actionMap.Disable();
+            m_Action.actionMap.AddAction("Pause", InputActionType.Button, binding: "<Keyboard>/space");
+            m_Action.actionMap.Enable();
+            m_UI.rebindOptions = new RebindOptions
+            {
+                duplicateBindingPolicy = DuplicateBindingPolicy.Allow
+            };
+
+            m_UI.StartInteractiveRebind();
+            m_Action.ApplyBindingOverride(0, "<Keyboard>/space");
+            m_UI.ongoingRebind.Complete();
+
+            Assert.That(m_Action.bindings[0].overridePath, Is.EqualTo("<Keyboard>/space"));
+        }
+
+        [Test]
+        public void DuplicateBinding_RetriesUpToConfiguredLimit()
+        {
+            m_Action.actionMap.Disable();
+            m_Action.actionMap.AddAction("Pause", InputActionType.Button, binding: "<Keyboard>/space");
+            m_Action.actionMap.Enable();
+            m_UI.rebindOptions = new RebindOptions { maximumDuplicateRetries = 1 };
+            var conflictCount = 0;
+            m_UI.duplicateBindingEvent.AddListener((_, _, _) => conflictCount++);
+
+            m_UI.StartInteractiveRebind();
+            m_Action.ApplyBindingOverride(0, "<Keyboard>/space");
+            m_UI.ongoingRebind.Complete();
+
+            Assert.That(conflictCount, Is.EqualTo(1));
+            Assert.That(m_UI.ongoingRebind, Is.Not.Null);
+            m_UI.CancelInteractiveRebind();
+        }
+
+        [Test]
+        public void InteractiveRebind_RequiredControlPathFiltersDevices()
+        {
+            var keyboard = InputSystem.AddDevice<Keyboard>();
+            m_UI.rebindOptions = new RebindOptions();
+            m_UI.rebindOptions.controlPathsToMatch.Add("<Gamepad>");
+
+            m_UI.StartInteractiveRebind();
+            PressAndRelease(keyboard.enterKey);
+            InputSystem.Update();
+
+            Assert.That(m_UI.ongoingRebind, Is.Not.Null);
+            m_Action.ApplyBindingOverride(0, "<Gamepad>/buttonSouth");
+            m_UI.ongoingRebind.Complete();
+
+            Assert.That(m_UI.ongoingRebind, Is.Null);
+            Assert.That(m_Action.bindings[0].overridePath, Is.EqualTo("<Gamepad>/buttonSouth"));
+        }
+
+        [Test]
+        public void InteractiveRebind_ExcludedControlPathIsIgnored()
+        {
+            var keyboard = InputSystem.AddDevice<Keyboard>();
+            m_UI.rebindOptions = new RebindOptions();
+            m_UI.rebindOptions.controlPathsToExclude.Add("<Keyboard>/enter");
+
+            m_UI.StartInteractiveRebind();
+            PressAndRelease(keyboard.enterKey);
+            InputSystem.Update();
+
+            Assert.That(m_UI.ongoingRebind, Is.Not.Null);
+            m_Action.ApplyBindingOverride(0, "<Keyboard>/tab");
+            m_UI.ongoingRebind.Complete();
+
+            Assert.That(m_UI.ongoingRebind, Is.Null);
+            Assert.That(m_Action.bindings[0].overridePath, Is.EqualTo("<Keyboard>/tab"));
+        }
+
+        [Test]
+        public void InteractiveRebind_DefaultCancelControlCancelsWithoutChangingBinding()
+        {
+            var keyboard = InputSystem.AddDevice<Keyboard>();
+            m_Action.ApplyBindingOverride(0, "<Keyboard>/enter");
+
+            m_UI.StartInteractiveRebind();
+            PressAndRelease(keyboard.escapeKey);
+            InputSystem.Update();
+
+            Assert.That(m_UI.ongoingRebind, Is.Null);
+            Assert.That(m_Action.bindings[0].overridePath, Is.EqualTo("<Keyboard>/enter"));
+        }
+
+        [Test]
+        public void InteractiveRebind_CustomCancelControlCancelsOnConfiguredPath()
+        {
+            var keyboard = InputSystem.AddDevice<Keyboard>();
+            m_UI.rebindOptions = new RebindOptions { cancelControlPath = "<Keyboard>/tab" };
+            m_Action.ApplyBindingOverride(0, "<Keyboard>/enter");
+
+            m_UI.StartInteractiveRebind();
+            PressAndRelease(keyboard.tabKey);
+            InputSystem.Update();
+
+            Assert.That(m_UI.ongoingRebind, Is.Null);
+            Assert.That(m_Action.bindings[0].overridePath, Is.EqualTo("<Keyboard>/enter"));
+        }
+
+        [Test]
+        public void InteractiveRebind_ExpectedControlTypeCanBeConfigured()
+        {
+            var keyboard = InputSystem.AddDevice<Keyboard>();
+            m_UI.rebindOptions = new RebindOptions { expectedControlType = "Axis" };
+
+            m_UI.StartInteractiveRebind();
+            PressAndRelease(keyboard.enterKey);
+            InputSystem.Update();
+
+            Assert.That(m_UI.ongoingRebind, Is.Not.Null);
+            m_UI.CancelInteractiveRebind();
         }
     }
 }
