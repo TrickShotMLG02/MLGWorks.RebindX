@@ -1,5 +1,4 @@
 using MLGWorks.Utils.Patterns;
-using Newtonsoft.Json;
 using System;
 using System.IO;
 using MLGWorks.Utils.Patterns.Singletons;
@@ -27,32 +26,35 @@ namespace MLGWorks.RebindX.Runtime
 
         private PlayerInputControls _controls;
         private InputActionAsset _actionAsset;
+        private IInputActionAssetProvider m_AssetProvider;
+        private IRebindPathProvider m_PathProvider;
+        private IBindingOverrideStore m_OverrideStore;
         public PlayerInputControls Controls => _controls;
         public InputActionAsset ActionAsset => _actionAsset;
+
+        public IRebindPathProvider PathProvider
+        {
+            get => m_PathProvider ?? new FileSystemRebindPathProvider(
+                pathType, relativePath, customPath, fileName);
+            set
+            {
+                m_PathProvider = value ?? throw new ArgumentNullException(nameof(value));
+                if (m_OverrideStore is JsonBindingOverrideStore)
+                    m_OverrideStore = null;
+            }
+        }
+
+        public IBindingOverrideStore OverrideStore
+        {
+            get => m_OverrideStore ??= new JsonBindingOverrideStore(PathProvider);
+            set => m_OverrideStore = value ?? throw new ArgumentNullException(nameof(value));
+        }
 
         public string DirectoryPath
         {
             get
             {
-                switch (pathType)
-                {
-                    case FileLocationType.PersistentDataPath:
-                        return Path.Combine(Application.persistentDataPath, relativePath);
-
-                    case FileLocationType.DataPath:
-                        return Path.Combine(Application.dataPath, relativePath);
-
-                    case FileLocationType.Custom:
-                        if (string.IsNullOrWhiteSpace(customPath))
-                        {
-                            throw new InvalidOperationException("A custom rebind path must be configured.");
-                        }
-
-                        return customPath;
-
-                    default:
-                        throw new ArgumentException("Invalid Path");
-                }
+                return PathProvider.DirectoryPath;
             }
         }
 
@@ -60,7 +62,7 @@ namespace MLGWorks.RebindX.Runtime
         {
             get
             {
-                return Path.Combine(DirectoryPath, fileName);
+                return PathProvider.FilePath;
             }
         }
 
@@ -75,16 +77,22 @@ namespace MLGWorks.RebindX.Runtime
                 return;
             }
 
+            m_AssetProvider = null;
+            m_PathProvider = null;
+            m_OverrideStore = null;
+
             if (actionAsset != null)
             {
                 _actionAsset = actionAsset;
-                _actionAsset.Enable();
+                m_AssetProvider = new InputActionAssetProvider(_actionAsset);
+                m_AssetProvider.Enable();
             }
             else
             {
                 _controls = new PlayerInputControls();
-                _actionAsset = _controls.asset;
-                _controls.Enable();
+                m_AssetProvider = new GeneratedControlsProvider(_controls);
+                _actionAsset = m_AssetProvider.Asset;
+                m_AssetProvider.Enable();
             }
 
             LoadRebinds();
@@ -102,15 +110,12 @@ namespace MLGWorks.RebindX.Runtime
                 return;
             }
 
-            if (_controls != null)
-            {
-                _controls.Disable();
-                _controls.Dispose();
-            }
+            m_AssetProvider?.Dispose();
+            m_AssetProvider = new GeneratedControlsProvider(controls);
 
             _controls = controls;
-            _actionAsset = controls.asset;
-            _controls.Enable();
+            _actionAsset = m_AssetProvider.Asset;
+            m_AssetProvider.Enable();
             LoadRebinds();
         }
 
@@ -126,19 +131,12 @@ namespace MLGWorks.RebindX.Runtime
                 return;
             }
 
-            if (_controls != null)
-            {
-                _controls.Disable();
-                _controls.Dispose();
-                _controls = null;
-            }
-            else
-            {
-                _actionAsset?.Disable();
-            }
+            m_AssetProvider?.Dispose();
+            _controls = null;
 
             _actionAsset = asset;
-            _actionAsset.Enable();
+            m_AssetProvider = new InputActionAssetProvider(asset);
+            m_AssetProvider.Enable();
             LoadRebinds();
         }
 
@@ -150,36 +148,9 @@ namespace MLGWorks.RebindX.Runtime
                 return;
             }
 
-            string rebinds = _actionAsset.SaveBindingOverridesAsJson();
             try
             {
-                // Get directory from file path
-                string directoryPath = Path.GetDirectoryName(FilePath);
-
-                // Create directory if it doesn't exist
-                if (string.IsNullOrEmpty(directoryPath))
-                {
-                    throw new InvalidOperationException("The rebind file path does not contain a directory.");
-                }
-
-                if (!Directory.Exists(directoryPath))
-                {
-                    Directory.CreateDirectory(directoryPath);
-                }
-
-                // Deserialize the JSON string to a dynamic object
-                var jsonObject = JsonConvert.DeserializeObject(rebinds);
-
-                string formattedJson = "";
-
-                if (jsonObject != null)
-                {
-                    // Serialize it back to a formatted (indented) JSON string
-                    formattedJson = JsonConvert.SerializeObject(jsonObject, Formatting.Indented);
-                }
-
-                // Write the input string to the file, overwriting if it exists
-                File.WriteAllText(FilePath, formattedJson);
+                OverrideStore.Save(_actionAsset);
                 Debug.Log("Input Config File saved to " + FilePath);
             }
             catch (Exception e)
@@ -198,12 +169,9 @@ namespace MLGWorks.RebindX.Runtime
 
             try
             {
-                // Check if file exists
                 if (File.Exists(FilePath))
                 {
-                    // Read the file content and return it
-                    string fileContent = File.ReadAllText(FilePath);
-                    _actionAsset.LoadBindingOverridesFromJson(fileContent);
+                    OverrideStore.Load(_actionAsset);
                     Debug.Log("Input Config File loaded successfully.", this);
                 }
                 else

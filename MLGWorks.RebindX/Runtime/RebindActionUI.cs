@@ -334,9 +334,6 @@ namespace MLGWorks.RebindX.Runtime
                 return;
             }
 
-            m_RebindAction = action;
-            m_RebindActionWasEnabled = action.enabled;
-
             // If the binding is a composite, we need to rebind each part in turn.
             if (action.bindings[bindingIndex].isComposite)
             {
@@ -362,22 +359,16 @@ namespace MLGWorks.RebindX.Runtime
         {
             m_RebindOperation?.Cancel(); // Will null out m_RebindOperation.
 
-            var actionWasEnabled = action.enabled;
-            m_RebindAction = action;
-            m_RebindActionWasEnabled = actionWasEnabled;
+            m_RebindSession = new RebindSession();
+            m_RebindSession.Begin(action);
 
             void CleanUp()
             {
                 m_RebindOperation?.Dispose();
                 m_RebindOperation = null;
-                if (actionWasEnabled)
-                    action.Enable();
-                m_RebindAction = null;
-                m_RebindActionWasEnabled = false;
+                m_RebindSession?.Complete();
+                m_RebindSession = null;
             }
-
-            //Fixes the "InvalidOperationException: Cannot rebind action x while it is enabled" error
-            action.Disable();
 
             // Configure the rebind.
             m_RebindOperation = action.PerformInteractiveRebinding(bindingIndex)
@@ -707,26 +698,14 @@ namespace MLGWorks.RebindX.Runtime
 
         protected void OnDisable()
         {
-            var rebindAction = m_RebindAction;
-            var rebindActionWasEnabled = m_RebindActionWasEnabled;
             m_RebindOperation?.Cancel();
 
             // Cancellation normally invokes CleanUp synchronously. Keep this fallback so disabling
             // the UI cannot leave an action disabled if the Input System defers the callback.
             m_RebindOperation?.Dispose();
             m_RebindOperation = null;
-            if (rebindAction != null && rebindActionWasEnabled)
-            {
-                rebindAction.Enable();
-                rebindAction.actionMap?.Enable();
-            }
-            if (rebindActionWasEnabled && m_Action?.action != null)
-            {
-                m_Action.action.Enable();
-                m_Action.action.actionMap?.Enable();
-            }
-            m_RebindAction = null;
-            m_RebindActionWasEnabled = false;
+            m_RebindSession?.Cancel();
+            m_RebindSession = null;
             SetRebindOverlayVisible(false);
 
             if (s_RebindActionUIs == null)
@@ -816,8 +795,7 @@ namespace MLGWorks.RebindX.Runtime
         private InteractiveRebindEvent m_RebindStopEvent;
 
         private InputActionRebindingExtensions.RebindingOperation m_RebindOperation;
-        private InputAction m_RebindAction;
-        private bool m_RebindActionWasEnabled;
+        private RebindSession m_RebindSession;
         private Dictionary<int, string> m_CompositeOverrideBackup;
 
         private static List<RebindActionUI> s_RebindActionUIs;

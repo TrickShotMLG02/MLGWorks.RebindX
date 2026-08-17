@@ -51,6 +51,13 @@ namespace MLGWorks.RebindX.Tests
         }
 
         [Test]
+        public void ResolveActionAndBinding_RejectsMissingActionReference()
+        {
+            m_UI.actionReference = null;
+            Assert.That(m_UI.ResolveActionAndBinding(out _, out _), Is.False);
+        }
+
+        [Test]
         public void ResolveActionAndBinding_RejectsMalformedBindingId()
         {
             m_UI.bindingId = "not-a-guid";
@@ -89,6 +96,16 @@ namespace MLGWorks.RebindX.Tests
             m_UI.UpdateBindingDisplay();
 
             Assert.That(display, Does.Contain("Space"));
+        }
+
+        [Test]
+        public void UpdateBindingDisplay_UsesEmptyDisplayForUnknownBinding()
+        {
+            string display = null;
+            m_UI.updateBindingUIEvent.AddListener((_, value, _, _) => display = value);
+            m_UI.bindingId = System.Guid.NewGuid().ToString();
+            m_UI.UpdateBindingDisplay();
+            Assert.That(display, Is.Empty);
         }
 
         [Test]
@@ -154,6 +171,39 @@ namespace MLGWorks.RebindX.Tests
         public void CancelInteractiveRebind_IsSafeWhenIdle()
         {
             Assert.DoesNotThrow(() => m_UI.CancelInteractiveRebind());
+        }
+
+        [Test]
+        public void CancelInteractiveRebind_CanBeCalledRepeatedly()
+        {
+            m_UI.StartInteractiveRebind();
+            m_UI.CancelInteractiveRebind();
+            Assert.DoesNotThrow(() => m_UI.CancelInteractiveRebind());
+            Assert.That(m_UI.ongoingRebind, Is.Null);
+        }
+
+        [Test]
+        public void InteractiveRebind_CanRestartWhileActive()
+        {
+            m_UI.StartInteractiveRebind();
+            var firstOperation = m_UI.ongoingRebind;
+            m_UI.StartInteractiveRebind();
+
+            Assert.That(m_UI.ongoingRebind, Is.Not.Null);
+            Assert.That(m_UI.ongoingRebind, Is.Not.SameAs(firstOperation));
+            m_UI.CancelInteractiveRebind();
+        }
+
+        [Test]
+        public void ResetToDefault_ReportsMissingBindingWithoutChangingAsset()
+        {
+            m_Action.ApplyBindingOverride(0, "<Keyboard>/enter");
+            m_UI.bindingId = System.Guid.NewGuid().ToString();
+            LogAssert.Expect(LogType.Error, $"Cannot find binding with ID '{m_UI.bindingId}' on '{m_Action}'");
+
+            m_UI.ResetToDefault();
+
+            Assert.That(m_Action.bindings[0].overridePath, Is.EqualTo("<Keyboard>/enter"));
         }
 
         [Test]

@@ -9,6 +9,23 @@ MLGWorks RebindX is a small runtime and editor integration layer for Unity's Inp
 
 RebindX changes binding overrides at runtime. It does not modify the original `.inputactions` asset or permanently change the default bindings.
 
+## Runtime architecture and extension points
+
+`RebindManager` remains the convenient Unity-facing façade, but its replaceable responsibilities are now separated into small runtime services:
+
+- `IRebindPathProvider` resolves the storage directory and file path. The default implementation is `FileSystemRebindPathProvider`.
+- `IBindingOverrideStore` loads and saves overrides. `JsonBindingOverrideStore` is the default persistent implementation, while `InMemoryBindingOverrideStore` is useful for tests, temporary profiles, and custom save flows.
+- `IInputActionAssetProvider` owns enabling and disposing an input asset. `InputActionAssetProvider` handles a normal asset and `GeneratedControlsProvider` handles `PlayerInputControls`.
+- `RebindSession` owns the enabled-state transition for one interactive rebind and restores the action's original state when the operation ends.
+
+The manager's existing Inspector configuration and methods remain compatible. Advanced integrations can replace the default persistence service:
+
+```csharp
+RebindManager.Instance.OverrideStore = new InMemoryBindingOverrideStore();
+```
+
+For a production backend such as cloud saves, implement `IBindingOverrideStore` and assign it before calling `SaveRebinds` or `LoadRebinds`. The store receives the active `InputActionAsset`; it does not own the asset or the manager lifetime.
+
 ## Requirements
 
 - Unity with the Input System package enabled.

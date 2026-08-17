@@ -60,12 +60,48 @@ namespace MLGWorks.RebindX.Tests
         }
 
         [Test]
+        public void SetControls_RejectsNullControls()
+        {
+            Assert.Throws<System.ArgumentNullException>(() => m_Manager.SetControls(null));
+        }
+
+        [Test]
+        public void OverrideStore_RejectsNullImplementation()
+        {
+            Assert.Throws<System.ArgumentNullException>(() => m_Manager.OverrideStore = null);
+        }
+
+        [Test]
+        public void PathProvider_RejectsNullImplementation()
+        {
+            Assert.Throws<System.ArgumentNullException>(() => m_Manager.PathProvider = null);
+        }
+
+        [Test]
         public void SaveRebinds_WithoutAssetLogsErrorAndDoesNotThrow()
         {
             SetPrivateField("_actionAsset", null);
 
             LogAssert.Expect(LogType.Error, "Cannot save rebinds before the input controls have been initialized.");
             Assert.DoesNotThrow(() => m_Manager.SaveRebinds());
+        }
+
+        [Test]
+        public void LoadRebinds_WithoutAssetLogsErrorAndDoesNotThrow()
+        {
+            SetPrivateField("_actionAsset", null);
+
+            LogAssert.Expect(LogType.Error, "Cannot load rebinds before the input controls have been initialized.");
+            Assert.DoesNotThrow(() => m_Manager.LoadRebinds());
+        }
+
+        [Test]
+        public void SetActionAsset_SameAssetIsIdempotent()
+        {
+            var asset = m_Manager.ActionAsset;
+            m_Manager.SetActionAsset(asset);
+            Assert.That(m_Manager.ActionAsset, Is.SameAs(asset));
+            Assert.That(asset.enabled, Is.True);
         }
 
         [Test]
@@ -80,6 +116,20 @@ namespace MLGWorks.RebindX.Tests
 
             Assert.That(action.bindings[0].overridePath, Is.EqualTo("<Keyboard>/enter"));
             Assert.That(File.Exists(m_Manager.FilePath), Is.True);
+        }
+
+        [Test]
+        public void OverrideStore_CanBeReplacedWithInMemoryImplementation()
+        {
+            var store = new InMemoryBindingOverrideStore();
+            var action = m_Asset.FindAction("Gameplay/Jump");
+            action.ApplyBindingOverride(0, "<Keyboard>/enter");
+
+            store.Save(m_Asset);
+            action.RemoveBindingOverride(0);
+            store.Load(m_Asset);
+
+            Assert.That(action.bindings[0].overridePath, Is.EqualTo("<Keyboard>/enter"));
         }
 
         [Test]
