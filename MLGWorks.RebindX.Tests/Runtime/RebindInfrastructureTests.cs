@@ -322,6 +322,58 @@ namespace MLGWorks.RebindX.Tests
             Directory.Delete(directory, true);
         }
 
+        [TestCase("keyboard", "keyboard")]
+        [TestCase("gamepad", "gamepad")]
+        [TestCase("player_1", "player_1")]
+        public void ProfilePathProvider_AppendsProfileId(string id, string expected)
+        {
+            var directory = Path.Combine(Application.temporaryCachePath, "RebindXProfilePaths");
+            var baseProvider = new FileSystemRebindPathProvider(FileLocationType.Custom, "", directory, "bindings.json");
+            var provider = new ProfileRebindPathProvider(baseProvider, id);
+
+            Assert.That(provider.DirectoryPath, Is.EqualTo(baseProvider.DirectoryPath));
+            Assert.That(provider.FilePath, Does.Contain("." + expected + ".json"));
+        }
+
+        [Test]
+        public void ProfilePathProvider_RejectsBlankId()
+        {
+            var provider = new FileSystemRebindPathProvider(FileLocationType.Custom, "", "C:/temp", "bindings.json");
+
+            Assert.Throws<System.ArgumentException>(() => new ProfileRebindPathProvider(provider, " "));
+        }
+
+        [Test]
+        public void ProfilePathProvider_DoesNotChangeBasePath()
+        {
+            var baseProvider = new FileSystemRebindPathProvider(FileLocationType.Custom, "", "C:/temp", "bindings.json");
+            var profileProvider = new ProfileRebindPathProvider(baseProvider, "one");
+
+            Assert.That(baseProvider.FilePath, Does.Not.EqualTo(profileProvider.FilePath));
+            Assert.That(baseProvider.FilePath, Does.EndWith("bindings.json"));
+        }
+
+        [Test]
+        public void RebindOptions_CloneCopiesDuplicateResolution()
+        {
+            var options = new RebindOptions { duplicateBindingResolution = DuplicateBindingResolution.Swap };
+
+            var clone = options.Clone();
+
+            Assert.That(clone.duplicateBindingResolution, Is.EqualTo(DuplicateBindingResolution.Swap));
+        }
+
+        [TestCase(DuplicateBindingResolution.Reject)]
+        [TestCase(DuplicateBindingResolution.Allow)]
+        [TestCase(DuplicateBindingResolution.Replace)]
+        [TestCase(DuplicateBindingResolution.Swap)]
+        public void RebindOptions_ClonePreservesEveryDuplicateResolution(DuplicateBindingResolution resolution)
+        {
+            var options = new RebindOptions { duplicateBindingResolution = resolution };
+
+            Assert.That(options.Clone().duplicateBindingResolution, Is.EqualTo(resolution));
+        }
+
         [Test]
         public void JsonStore_DeleteRemovesPersistedFile()
         {

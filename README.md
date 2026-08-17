@@ -62,6 +62,20 @@ Set **Input Action Asset** to the asset that should be used by the game. The man
 
 `RebindManager` is a normal component and does not enforce a global singleton. Use one manager per input asset/profile when supporting split-screen players, local multiplayer, or separate settings contexts. Assign each `RebindActionUI.rebindManager` explicitly so rows use the intended asset and persistence profile.
 
+### Managing profiles
+
+Profiles have stable IDs, display names, and independent override files:
+
+```csharp
+manager.CreateProfile("keyboard", "Keyboard and Mouse");
+manager.CreateProfile("gamepad", "Controller");
+manager.SwitchProfile("gamepad");
+manager.RenameProfile("gamepad", "Xbox Controller");
+manager.DeleteProfile("keyboard");
+```
+
+The active profile cannot be deleted. Profile IDs are validated as file-safe identifiers, and profile metadata is persisted beside the configured bindings file. Switching profiles saves the current profile, clears active overrides, and loads the selected profile.
+
 ### 3. Configure persistence
 
 The manager exposes three file location modes:
@@ -130,6 +144,8 @@ Each `RebindActionUI` has a **Rebind Policy** configuration. It can restrict acc
 
 Duplicate bindings are rejected by default. RebindX raises `duplicateBindingEvent` with the conflicting action name and control path, restores the previous binding, and retries up to **Maximum Duplicate Retries**. Set `Duplicate Binding Policy` to `Allow` when duplicate controls are intentional. A retry limit of zero rejects the attempted binding and ends the operation immediately.
 
+For user-facing conflict resolution, set `duplicateBindingResolution` to `Replace` or `Swap`. `Replace` removes the conflicting binding override and keeps the new binding. `Swap` moves the target binding's previous path onto the conflicting binding. `duplicateResolutionEvent` reports the selected resolution. The legacy `Duplicate Binding Policy = Allow` setting takes precedence for compatibility.
+
 **Duplicate Binding Scope** controls whether conflicts are checked in the current action map or across the entire input asset. Bindings assigned exclusively to different control-scheme groups are not treated as conflicts; bindings with no groups are considered global. Set **Timeout Seconds** to cancel a rebind after that duration. `timeoutRebindEvent` is raised before cancellation. Removing an input device also cancels an active operation by default.
 
 The same options are available from code:
@@ -148,6 +164,19 @@ rebindRow.rebindOptions.controlPathsToExclude.Add("<Gamepad>/leftStick");
 Subscribe to `duplicateBindingEvent` to display a user-facing conflict message. Its arguments are the row, the conflicting action name, and the rejected control path.
 
 `rebindAccessibilityEvent` reports status messages such as `Waiting for input`, `Rebind cancelled`, and `Rebind timed out`. Use it for screen-reader announcements or custom accessibility UI. The assigned overlay GameObject is activated only while an operation is active and is hidden on completion, cancellation, timeout, device removal, disable, or destruction.
+
+### Device-aware display
+
+`RebindActionUI` exposes `deviceBindingDisplayEvent`, which reports a normalized device kind, glyph key, and prompt. The default provider produces keys such as `keyboard.enter`, `mouse.left_button`, and `gamepad.button_south`. Projects can inject `IDeviceBindingDisplayProvider` to map those keys to their own sprite or glyph system:
+
+```csharp
+rebindRow.bindingDisplayProvider = new MyGlyphProvider();
+rebindRow.deviceBindingDisplayEvent.AddListener((row, device, glyph, prompt) =>
+{
+    glyphView.SetGlyph(glyph);
+    promptLabel.text = prompt;
+});
+```
 
 ## Display and UI events
 

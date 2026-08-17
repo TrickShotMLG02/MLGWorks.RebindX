@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using UnityEngine;
 using UnityEngine.InputSystem;
@@ -22,6 +23,7 @@ namespace MLGWorks.RebindX.Runtime
         [SerializeField] private string fileName = "rebinds.json";
         [Tooltip("Optional stable identifier for this input profile. If empty, an identifier is generated from the asset structure.")]
         [SerializeField] private string profileId = "";
+        [SerializeField] private List<RebindProfile> profiles = new List<RebindProfile>();
         [SerializeField] private InputActionAsset actionAsset;
 
         private PlayerInputControls _controls;
@@ -29,6 +31,7 @@ namespace MLGWorks.RebindX.Runtime
         private IInputActionAssetProvider m_AssetProvider;
         private IRebindPathProvider m_PathProvider;
         private IBindingOverrideStore m_OverrideStore;
+        private bool m_UseProfileFiles;
         public PlayerInputControls Controls => _controls;
         public InputActionAsset ActionAsset => _actionAsset;
 
@@ -37,6 +40,7 @@ namespace MLGWorks.RebindX.Runtime
         /// Empty values use the generated asset identity.
         /// </summary>
         public string ProfileId => profileId;
+        public IReadOnlyList<RebindProfile> Profiles => profiles;
 
         public IRebindPathProvider PathProvider
         {
@@ -52,7 +56,11 @@ namespace MLGWorks.RebindX.Runtime
 
         public IBindingOverrideStore OverrideStore
         {
-            get => m_OverrideStore ??= new JsonBindingOverrideStore(PathProvider, profileId);
+            get => m_OverrideStore ??= new JsonBindingOverrideStore(
+                m_UseProfileFiles && !string.IsNullOrWhiteSpace(profileId)
+                    ? new ProfileRebindPathProvider(PathProvider, profileId)
+                    : PathProvider,
+                profileId);
             set => m_OverrideStore = value ?? throw new ArgumentNullException(nameof(value));
         }
 
@@ -60,7 +68,7 @@ namespace MLGWorks.RebindX.Runtime
         {
             get
             {
-                return PathProvider.DirectoryPath;
+                return ActivePathProvider.DirectoryPath;
             }
         }
 
@@ -68,15 +76,21 @@ namespace MLGWorks.RebindX.Runtime
         {
             get
             {
-                return PathProvider.FilePath;
+                return ActivePathProvider.FilePath;
             }
         }
+
+        private IRebindPathProvider ActivePathProvider =>
+            m_UseProfileFiles && !string.IsNullOrWhiteSpace(profileId)
+                ? new ProfileRebindPathProvider(PathProvider, profileId)
+                : PathProvider;
 
         protected virtual void Awake()
         {
             m_AssetProvider = null;
             m_PathProvider = null;
             m_OverrideStore = null;
+            RebindProfileMetadataStore.Load(PathProvider, profiles);
 
             if (actionAsset != null)
             {
@@ -105,6 +119,86 @@ namespace MLGWorks.RebindX.Runtime
             m_OverrideStore = null;
             if (_actionAsset != null)
                 LoadRebinds();
+        }
+
+        public BindingOverrideResult CreateProfile(string id, string displayName = null, bool activate = true)
+        {
+            if (!IsValidProfileId(id))
+                return BindingOverrideResult.Failure(BindingOverrideResultCode.InvalidPath, "Profile IDs must contain at least one valid file-name character.");
+            id = id.Trim();
+            if (profiles.Exists(profile => string.Equals(profile.Id, id, StringComparison.OrdinalIgnoreCase)))
+                return BindingOverrideResult.Failure(BindingOverrideResultCode.IoFailure, "A profile with that ID already exists.");
+
+            profiles.Add(new RebindProfile(id, displayName));
+            var metadataResult = RebindProfileMetadataStore.Save(PathProvider, profiles);
+            if (!metadataResult.Succeeded)
+            {
+                profiles.RemoveAt(profiles.Count - 1);
+                return metadataResult;
+            }
+            return activate ? SwitchProfile(id) : BindingOverrideResult.Success("Profile created.");
+        }
+
+        public BindingOverrideResult SwitchProfile(string id)
+        {
+            if (!IsValidProfileId(id))
+                return BindingOverrideResult.Failure(BindingOverrideResultCode.InvalidPath, "A valid profile ID is required.");
+            id = id.Trim();
+            var profile = profiles.Find(candidate => string.Equals(candidate.Id, id, StringComparison.OrdinalIgnoreCase));
+            if (profile == null)
+                return BindingOverrideResult.Failure(BindingOverrideResultCode.NoData, "The requested profile does not exist.");
+            if (string.Equals(profileId, id, StringComparison.Ordinal))
+                return BindingOverrideResult.Success("Profile already active.");
+
+            if (_actionAsset != null && !string.IsNullOrWhiteSpace(profileId))
+                SaveRebinds();
+            _actionAsset?.RemoveAllBindingOverrides();
+            profileId = id;
+            m_UseProfileFiles = true;
+            m_OverrideStore = null;
+            return LoadRebinds();
+        }
+
+        public BindingOverrideResult RenameProfile(string id, string displayName)
+        {
+            var profile = profiles.Find(candidate => string.Equals(candidate.Id, id?.Trim(), StringComparison.OrdinalIgnoreCase));
+            if (profile == null)
+                return BindingOverrideResult.Failure(BindingOverrideResultCode.NoData, "The requested profile does not exist.");
+            var previousName = profile.DisplayName;
+            profile.Rename(displayName);
+            var result = RebindProfileMetadataStore.Save(PathProvider, profiles);
+            if (!result.Succeeded)
+                profile.Rename(previousName);
+            return result.Succeeded ? BindingOverrideResult.Success("Profile renamed.") : result;
+        }
+
+        public BindingOverrideResult DeleteProfile(string id)
+        {
+            var profile = profiles.Find(candidate => string.Equals(candidate.Id, id?.Trim(), StringComparison.OrdinalIgnoreCase));
+            if (profile == null)
+                return BindingOverrideResult.Failure(BindingOverrideResultCode.NoData, "The requested profile does not exist.");
+            if (string.Equals(profileId, profile.Id, StringComparison.Ordinal))
+                return BindingOverrideResult.Failure(BindingOverrideResultCode.IoFailure, "The active profile cannot be deleted.");
+
+            var store = new JsonBindingOverrideStore(new ProfileRebindPathProvider(PathProvider, profile.Id), profile.Id);
+            var result = store.Delete();
+            if (!result.Succeeded)
+                return result;
+            profiles.Remove(profile);
+            var metadataResult = RebindProfileMetadataStore.Save(PathProvider, profiles);
+            if (!metadataResult.Succeeded)
+                profiles.Add(profile);
+            return metadataResult.Succeeded ? BindingOverrideResult.Success("Profile deleted.") : metadataResult;
+        }
+
+        private static bool IsValidProfileId(string id)
+        {
+            if (string.IsNullOrWhiteSpace(id))
+                return false;
+            foreach (var character in id.Trim())
+                if (Array.IndexOf(Path.GetInvalidFileNameChars(), character) >= 0 || char.IsWhiteSpace(character))
+                    return false;
+            return true;
         }
 
         protected virtual void OnDestroy()

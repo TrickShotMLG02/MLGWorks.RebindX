@@ -177,6 +177,12 @@ namespace MLGWorks.RebindX.Runtime
             set => m_RebindOptions = value ?? new RebindOptions();
         }
 
+        public IDeviceBindingDisplayProvider bindingDisplayProvider
+        {
+            get => m_BindingDisplayProvider ??= new DefaultDeviceBindingDisplayProvider();
+            set => m_BindingDisplayProvider = value ?? new DefaultDeviceBindingDisplayProvider();
+        }
+
         public DuplicateBindingEvent duplicateBindingEvent
         {
             get
@@ -184,6 +190,26 @@ namespace MLGWorks.RebindX.Runtime
                 if (m_DuplicateBindingEvent == null)
                     m_DuplicateBindingEvent = new DuplicateBindingEvent();
                 return m_DuplicateBindingEvent;
+            }
+        }
+
+        public DuplicateBindingResolutionEvent duplicateResolutionEvent
+        {
+            get
+            {
+                if (m_DuplicateResolutionEvent == null)
+                    m_DuplicateResolutionEvent = new DuplicateBindingResolutionEvent();
+                return m_DuplicateResolutionEvent;
+            }
+        }
+
+        public DeviceBindingDisplayEvent deviceBindingDisplayEvent
+        {
+            get
+            {
+                if (m_DeviceBindingDisplayEvent == null)
+                    m_DeviceBindingDisplayEvent = new DeviceBindingDisplayEvent();
+                return m_DeviceBindingDisplayEvent;
             }
         }
 
@@ -299,6 +325,11 @@ namespace MLGWorks.RebindX.Runtime
 
             // Give listeners a chance to configure UI in response.
             m_UpdateBindingUIEvent?.Invoke(this, displayString, deviceLayoutName, controlPath);
+            var displayProvider = bindingDisplayProvider;
+            deviceBindingDisplayEvent.Invoke(this,
+                displayProvider.GetDeviceKind(deviceLayoutName, controlPath).ToString(),
+                displayProvider.GetGlyphKey(deviceLayoutName, controlPath),
+                displayProvider.GetPrompt(deviceLayoutName, controlPath));
         }
 
         /// <summary>
@@ -366,6 +397,7 @@ namespace MLGWorks.RebindX.Runtime
             else
             {
                 m_OriginalBindingOverride = action.bindings[bindingIndex].overridePath;
+                m_OriginalBindingPath = action.bindings[bindingIndex].effectivePath;
                 PerformInteractiveRebind(action, bindingIndex);
             }
         }
@@ -438,6 +470,7 @@ namespace MLGWorks.RebindX.Runtime
                         RaiseAccessibility("Rebind cancelled");
                         m_RebindStartedAt = -1f;
                         m_OriginalBindingOverride = null;
+                        m_OriginalBindingPath = null;
                         CleanUp();
                     })
                 .OnComplete(
@@ -447,11 +480,40 @@ namespace MLGWorks.RebindX.Runtime
                         m_RebindStartedAt = -1f;
 
                         // Check for duplicates before accepting the new binding.
-                        if (options.duplicateBindingPolicy == DuplicateBindingPolicy.Reject &&
-                            CheckDuplicateBinding(action, bindingIndex, allCompositeParts, out var conflictingAction))
+                        var duplicateResolution = options.duplicateBindingPolicy == DuplicateBindingPolicy.Allow
+                            ? DuplicateBindingResolution.Allow
+                            : options.duplicateBindingResolution;
+                        if (duplicateResolution != DuplicateBindingResolution.Allow &&
+                            CheckDuplicateBinding(action, bindingIndex, allCompositeParts, out var conflictingAction, out var conflictingBindingIndex))
                         {
                             var conflictingPath = action.bindings[bindingIndex].effectivePath;
                             duplicateBindingEvent.Invoke(this, conflictingAction?.name ?? "Unknown", conflictingPath);
+                            duplicateResolutionEvent.Invoke(this, conflictingAction?.name ?? "Unknown", conflictingPath, duplicateResolution);
+
+                            if (duplicateResolution == DuplicateBindingResolution.Replace && conflictingAction != null)
+                            {
+                                conflictingAction.RemoveBindingOverride(conflictingBindingIndex);
+                                CleanUp();
+                                m_OriginalBindingOverride = null;
+                                m_OriginalBindingPath = null;
+                                SaveRebinds();
+                                UpdateBindingDisplay();
+                                SetRebindOverlayVisible(false);
+                                return;
+                            }
+
+                            if (duplicateResolution == DuplicateBindingResolution.Swap && conflictingAction != null)
+                            {
+                                conflictingAction.ApplyBindingOverride(conflictingBindingIndex, m_OriginalBindingPath);
+                                CleanUp();
+                                m_OriginalBindingOverride = null;
+                                m_OriginalBindingPath = null;
+                                SaveRebinds();
+                                UpdateBindingDisplay();
+                                SetRebindOverlayVisible(false);
+                                return;
+                            }
+
                             action.RemoveBindingOverride(bindingIndex);
                             if (allCompositeParts)
                             {
@@ -491,6 +553,7 @@ namespace MLGWorks.RebindX.Runtime
                         CleanUp();
                         m_RebindStartedAt = -1f;
                         m_OriginalBindingOverride = null;
+                        m_OriginalBindingPath = null;
 
                         // If there's more composite parts we should bind, initiate a rebind
                         // for the next part.
@@ -562,9 +625,7 @@ namespace MLGWorks.RebindX.Runtime
 
             if (m_RebindText != null)
             {
-                var text = !string.IsNullOrEmpty(m_RebindOperation.expectedControlType)
-                    ? $"{partName}Waiting for {m_RebindOperation.expectedControlType} input..."
-                    : $"{partName}Waiting for input...";
+                var text = partName + bindingDisplayProvider.GetPrompt(null, null, m_RebindOperation.expectedControlType);
 
                 // Resolve the optional localized prompt. An unconfigured
                 // LocalizedString must not produce lookup errors.
@@ -662,7 +723,13 @@ namespace MLGWorks.RebindX.Runtime
 
         private bool CheckDuplicateBinding(InputAction action, int bindingIndex, bool allCompositeParts, out InputAction conflictingAction)
         {
+            return CheckDuplicateBinding(action, bindingIndex, allCompositeParts, out conflictingAction, out _);
+        }
+
+        private bool CheckDuplicateBinding(InputAction action, int bindingIndex, bool allCompositeParts, out InputAction conflictingAction, out int conflictingBindingIndex)
+        {
             conflictingAction = null;
+            conflictingBindingIndex = -1;
             InputBinding newBinding = action.bindings[bindingIndex];
             var options = m_RebindOptions ?? new RebindOptions();
             var maps = action.actionMap?.asset != null && options.duplicateBindingScope == DuplicateBindingScope.EntireAsset
@@ -672,14 +739,18 @@ namespace MLGWorks.RebindX.Runtime
             {
                 if (map == null)
                     continue;
-                foreach (InputBinding binding in map.bindings)
+                for (var mapBindingIndex = 0; mapBindingIndex < map.bindings.Count; ++mapBindingIndex)
                 {
+                    var binding = map.bindings[mapBindingIndex];
                     if (binding.action == newBinding.action ||
                         binding.effectivePath != newBinding.effectivePath ||
                         !ControlSchemeGroupsOverlap(binding.groups, newBinding.groups))
                         continue;
 
                     conflictingAction = map.FindAction(binding.action, throwIfNotFound: false);
+                    conflictingBindingIndex = conflictingAction == null
+                        ? -1
+                        : conflictingAction.bindings.IndexOf(candidate => candidate.id == binding.id);
                     return true;
                 }
             }
@@ -701,6 +772,7 @@ namespace MLGWorks.RebindX.Runtime
                         previousPart.effectivePath == newBinding.effectivePath)
                     {
                         conflictingAction = action;
+                        conflictingBindingIndex = i;
                         return true;
                     }
                 }
@@ -937,15 +1009,19 @@ namespace MLGWorks.RebindX.Runtime
         [Tooltip("Controls accepted, excluded, and conflict behavior for interactive rebinding.")]
         [SerializeField]
         private RebindOptions m_RebindOptions = new RebindOptions();
+        private IDeviceBindingDisplayProvider m_BindingDisplayProvider;
 
         [Tooltip("Event raised when a proposed binding conflicts with another binding.")]
         [SerializeField]
         private DuplicateBindingEvent m_DuplicateBindingEvent;
+        [SerializeField] private DuplicateBindingResolutionEvent m_DuplicateResolutionEvent;
+        [SerializeField] private DeviceBindingDisplayEvent m_DeviceBindingDisplayEvent;
 
         private InputActionRebindingExtensions.RebindingOperation m_RebindOperation;
         private RebindSession m_RebindSession;
         private Dictionary<int, string> m_CompositeOverrideBackup;
         private string m_OriginalBindingOverride;
+        private string m_OriginalBindingPath;
         private float m_RebindStartedAt = -1f;
 
         private static List<RebindActionUI> s_RebindActionUIs;
@@ -1015,6 +1091,16 @@ namespace MLGWorks.RebindX.Runtime
 
         [Serializable]
         public class DuplicateBindingEvent : UnityEvent<RebindActionUI, string, string>
+        {
+        }
+
+        [Serializable]
+        public class DuplicateBindingResolutionEvent : UnityEvent<RebindActionUI, string, string, DuplicateBindingResolution>
+        {
+        }
+
+        [Serializable]
+        public class DeviceBindingDisplayEvent : UnityEvent<RebindActionUI, string, string, string>
         {
         }
     }

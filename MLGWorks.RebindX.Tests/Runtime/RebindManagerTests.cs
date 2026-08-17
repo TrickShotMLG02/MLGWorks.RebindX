@@ -265,6 +265,194 @@ namespace MLGWorks.RebindX.Tests
             Assert.Throws<System.InvalidOperationException>(() => _ = m_Manager.DirectoryPath);
         }
 
+        [Test]
+        public void CreateProfile_AddsInactiveProfileWithDisplayName()
+        {
+            var result = m_Manager.CreateProfile("keyboard", "Keyboard Layout", false);
+
+            Assert.That(result.Succeeded, Is.True);
+            Assert.That(m_Manager.Profiles, Has.Count.EqualTo(1));
+            Assert.That(m_Manager.Profiles[0].Id, Is.EqualTo("keyboard"));
+            Assert.That(m_Manager.Profiles[0].DisplayName, Is.EqualTo("Keyboard Layout"));
+            Assert.That(m_Manager.ProfileId, Is.Empty);
+        }
+
+        [TestCase(null)]
+        [TestCase("")]
+        [TestCase(" ")]
+        [TestCase("profile name")]
+        [TestCase("profile/name")]
+        public void CreateProfile_RejectsInvalidIds(string id)
+        {
+            var result = m_Manager.CreateProfile(id, activate: false);
+
+            Assert.That(result.Code, Is.EqualTo(BindingOverrideResultCode.InvalidPath));
+            Assert.That(m_Manager.Profiles, Is.Empty);
+        }
+
+        [Test]
+        public void CreateProfile_RejectsDuplicateIdsCaseInsensitively()
+        {
+            m_Manager.CreateProfile("Keyboard", activate: false);
+
+            var result = m_Manager.CreateProfile("keyboard", activate: false);
+
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(m_Manager.Profiles, Has.Count.EqualTo(1));
+        }
+
+        [Test]
+        public void CreateProfile_ActivatesProfileAndUsesProfileSpecificFile()
+        {
+            var result = m_Manager.CreateProfile("keyboard");
+
+            Assert.That(result.Succeeded, Is.True);
+            Assert.That(m_Manager.ProfileId, Is.EqualTo("keyboard"));
+            Assert.That(m_Manager.FilePath, Does.Contain(".keyboard."));
+        }
+
+        [Test]
+        public void SwitchProfile_RejectsUnknownProfileWithoutChangingActiveProfile()
+        {
+            m_Manager.CreateProfile("keyboard");
+
+            var result = m_Manager.SwitchProfile("gamepad");
+
+            Assert.That(result.Code, Is.EqualTo(BindingOverrideResultCode.NoData));
+            Assert.That(m_Manager.ProfileId, Is.EqualTo("keyboard"));
+        }
+
+        [Test]
+        public void SwitchProfile_PersistsAndRestoresIndependentOverrides()
+        {
+            m_Manager.CreateProfile("keyboard");
+            var action = m_Asset.FindAction("Gameplay/Jump");
+            action.ApplyBindingOverride(0, "<Keyboard>/enter");
+            m_Manager.SaveRebinds();
+            m_Manager.CreateProfile("gamepad");
+            action.ApplyBindingOverride(0, "<Gamepad>/buttonSouth");
+            m_Manager.SaveRebinds();
+
+            var switchResult = m_Manager.SwitchProfile("keyboard");
+
+            Assert.That(switchResult.Succeeded, Is.True);
+            Assert.That(action.bindings[0].overridePath, Is.EqualTo("<Keyboard>/enter"));
+            Assert.That(m_Manager.SwitchProfile("gamepad").Succeeded, Is.True);
+            Assert.That(action.bindings[0].overridePath, Is.EqualTo("<Gamepad>/buttonSouth"));
+        }
+
+        [Test]
+        public void SwitchProfile_ToCurrentProfileIsIdempotent()
+        {
+            m_Manager.CreateProfile("keyboard");
+
+            var result = m_Manager.SwitchProfile("keyboard");
+
+            Assert.That(result.Succeeded, Is.True);
+            Assert.That(m_Manager.Profiles, Has.Count.EqualTo(1));
+        }
+
+        [Test]
+        public void RenameProfile_ChangesDisplayNameOnly()
+        {
+            m_Manager.CreateProfile("keyboard", "Old", false);
+
+            var result = m_Manager.RenameProfile("keyboard", "New");
+
+            Assert.That(result.Succeeded, Is.True);
+            Assert.That(m_Manager.Profiles[0].Id, Is.EqualTo("keyboard"));
+            Assert.That(m_Manager.Profiles[0].DisplayName, Is.EqualTo("New"));
+        }
+
+        [Test]
+        public void RenameProfile_BlankNameFallsBackToId()
+        {
+            m_Manager.CreateProfile("keyboard", "Old", false);
+
+            m_Manager.RenameProfile("keyboard", " ");
+
+            Assert.That(m_Manager.Profiles[0].DisplayName, Is.EqualTo("keyboard"));
+        }
+
+        [Test]
+        public void RenameProfile_RejectsUnknownProfile()
+        {
+            var result = m_Manager.RenameProfile("missing", "Name");
+
+            Assert.That(result.Code, Is.EqualTo(BindingOverrideResultCode.NoData));
+        }
+
+        [Test]
+        public void DeleteProfile_RejectsActiveProfile()
+        {
+            m_Manager.CreateProfile("keyboard");
+
+            var result = m_Manager.DeleteProfile("keyboard");
+
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(m_Manager.Profiles, Has.Count.EqualTo(1));
+        }
+
+        [Test]
+        public void DeleteProfile_RemovesInactiveProfileAndItsFile()
+        {
+            m_Manager.CreateProfile("keyboard");
+            var action = m_Asset.FindAction("Gameplay/Jump");
+            action.ApplyBindingOverride(0, "<Keyboard>/enter");
+            m_Manager.SaveRebinds();
+            m_Manager.CreateProfile("gamepad", activate: false);
+            m_Manager.SwitchProfile("keyboard");
+            m_Manager.SwitchProfile("gamepad");
+            var profilePath = m_Manager.FilePath;
+
+            var result = m_Manager.DeleteProfile("keyboard");
+
+            Assert.That(result.Succeeded, Is.True);
+            Assert.That(m_Manager.Profiles, Has.Count.EqualTo(1));
+            Assert.That(File.Exists(profilePath), Is.False);
+        }
+
+        [Test]
+        public void ProfilePathProvider_SanitizesFileNameCharacters()
+        {
+            var provider = new ProfileRebindPathProvider(m_Manager.PathProvider, "profile:one");
+
+            Assert.That(provider.FilePath, Does.Not.Contain("profile:one"));
+            Assert.That(provider.FilePath, Does.Contain("profile_one"));
+        }
+
+        [Test]
+        public void CreateProfile_PersistsProfileMetadata()
+        {
+            m_Manager.CreateProfile("keyboard", "Keyboard", false);
+
+            Assert.That(File.Exists(m_Manager.FilePath + ".profiles"), Is.True);
+            Assert.That(File.ReadAllText(m_Manager.FilePath + ".profiles"), Does.Contain("Keyboard"));
+        }
+
+        [Test]
+        public void RenameProfile_UpdatesPersistedMetadata()
+        {
+            m_Manager.CreateProfile("keyboard", "Old", false);
+            m_Manager.RenameProfile("keyboard", "New");
+
+            var metadata = File.ReadAllText(m_Manager.FilePath + ".profiles");
+            Assert.That(metadata, Does.Contain("New"));
+            Assert.That(metadata, Does.Not.Contain("Old"));
+        }
+
+        [Test]
+        public void DeleteProfile_UpdatesPersistedMetadata()
+        {
+            m_Manager.CreateProfile("keyboard", activate: false);
+            m_Manager.CreateProfile("gamepad", activate: false);
+            m_Manager.DeleteProfile("keyboard");
+
+            var metadata = File.ReadAllText(m_Manager.FilePath + ".profiles");
+            Assert.That(metadata, Does.Not.Contain("keyboard"));
+            Assert.That(metadata, Does.Contain("gamepad"));
+        }
+
         private void SetPrivateField(string name, object value)
         {
             SetPrivateField(m_Manager, name, value);

@@ -30,6 +30,8 @@ namespace MLGWorks.RebindX.Runtime.Editors
             m_RebindAccessibilityEventProperty = serializedObject.FindProperty("m_RebindAccessibilityEvent");
             m_RebindOptionsProperty = serializedObject.FindProperty("m_RebindOptions");
             m_DuplicateBindingEventProperty = serializedObject.FindProperty("m_DuplicateBindingEvent");
+            m_DuplicateResolutionEventProperty = serializedObject.FindProperty("m_DuplicateResolutionEvent");
+            m_DeviceBindingDisplayEventProperty = serializedObject.FindProperty("m_DeviceBindingDisplayEvent");
             m_DisplayStringOptionsProperty = serializedObject.FindProperty("m_DisplayStringOptions");
             m_TitleLocalizationProperty = serializedObject.FindProperty("m_titleLocalization");
             m_DescriptionLocalizationProperty = serializedObject.FindProperty("m_descriptionLocalization");
@@ -86,6 +88,8 @@ namespace MLGWorks.RebindX.Runtime.Editors
                 EditorGUILayout.PropertyField(m_RebindAccessibilityEventProperty);
                 EditorGUILayout.PropertyField(m_UpdateBindingUIEventProperty);
                 EditorGUILayout.PropertyField(m_DuplicateBindingEventProperty);
+                EditorGUILayout.PropertyField(m_DuplicateResolutionEventProperty);
+                EditorGUILayout.PropertyField(m_DeviceBindingDisplayEventProperty);
             }
 
             EditorGUILayout.Space();
@@ -199,6 +203,8 @@ namespace MLGWorks.RebindX.Runtime.Editors
         private SerializedProperty m_UpdateBindingUIEventProperty;
         private SerializedProperty m_RebindOptionsProperty;
         private SerializedProperty m_DuplicateBindingEventProperty;
+        private SerializedProperty m_DuplicateResolutionEventProperty;
+        private SerializedProperty m_DeviceBindingDisplayEventProperty;
         private SerializedProperty m_DisplayStringOptionsProperty;
         private SerializedProperty m_TitleLocalizationProperty;
         private SerializedProperty m_DescriptionLocalizationProperty;

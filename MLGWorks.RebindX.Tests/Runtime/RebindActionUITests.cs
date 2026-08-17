@@ -38,6 +38,13 @@ namespace MLGWorks.RebindX.Tests
         private InputAction m_Action;
         private RebindActionUI m_UI;
 
+        private sealed class TestDisplayProvider : IDeviceBindingDisplayProvider
+        {
+            public BindingDeviceKind GetDeviceKind(string _, string __) => BindingDeviceKind.Gamepad;
+            public string GetGlyphKey(string _, string __) => "custom.glyph";
+            public string GetPrompt(string _, string __, string ___ = null) => "Custom prompt";
+        }
+
         [SetUp]
         public override void Setup()
         {
@@ -421,6 +428,154 @@ namespace MLGWorks.RebindX.Tests
         }
 
         [Test]
+        public void DuplicateBinding_ReplaceClearsConflictingBindingAndKeepsNewBinding()
+        {
+            m_Action.actionMap.Disable();
+            var pause = m_Action.actionMap.AddAction("Pause", InputActionType.Button, binding: "<Keyboard>/space");
+            m_Action.actionMap.Enable();
+            m_UI.rebindOptions = new RebindOptions
+            {
+                duplicateBindingResolution = DuplicateBindingResolution.Replace,
+                maximumDuplicateRetries = 0
+            };
+
+            m_UI.StartInteractiveRebind();
+            m_Action.ApplyBindingOverride(0, "<Keyboard>/space");
+            m_UI.ongoingRebind.Complete();
+
+            Assert.That(m_Action.bindings[0].overridePath, Is.EqualTo("<Keyboard>/space"));
+            Assert.That(pause.bindings[0].overridePath, Is.Null.Or.Empty);
+        }
+
+        [Test]
+        public void DuplicateBinding_SwapMovesPreviousTargetPathToConflict()
+        {
+            m_Action.actionMap.Disable();
+            var pause = m_Action.actionMap.AddAction("Pause", InputActionType.Button, binding: "<Keyboard>/space");
+            m_Action.actionMap.Enable();
+            m_Action.ApplyBindingOverride(0, "<Keyboard>/enter");
+            m_UI.rebindOptions = new RebindOptions
+            {
+                duplicateBindingResolution = DuplicateBindingResolution.Swap,
+                maximumDuplicateRetries = 0
+            };
+
+            m_UI.StartInteractiveRebind();
+            m_Action.ApplyBindingOverride(0, "<Keyboard>/space");
+            m_UI.ongoingRebind.Complete();
+
+            Assert.That(m_Action.bindings[0].overridePath, Is.EqualTo("<Keyboard>/space"));
+            Assert.That(pause.bindings[0].overridePath, Is.EqualTo("<Keyboard>/enter"));
+        }
+
+        [Test]
+        public void DuplicateBinding_SwapRaisesResolutionEvent()
+        {
+            m_Action.actionMap.Disable();
+            m_Action.actionMap.AddAction("Pause", InputActionType.Button, binding: "<Keyboard>/space");
+            m_Action.actionMap.Enable();
+            m_UI.rebindOptions = new RebindOptions { duplicateBindingResolution = DuplicateBindingResolution.Swap };
+            var resolutions = new List<DuplicateBindingResolution>();
+            m_UI.duplicateResolutionEvent.AddListener((_, _, _, resolution) => resolutions.Add(resolution));
+
+            m_UI.StartInteractiveRebind();
+            m_Action.ApplyBindingOverride(0, "<Keyboard>/space");
+            m_UI.ongoingRebind.Complete();
+
+            Assert.That(resolutions, Is.EqualTo(new[] { DuplicateBindingResolution.Swap }));
+        }
+
+        [Test]
+        public void DuplicateBinding_ExplicitAllowResolutionKeepsConflict()
+        {
+            m_Action.actionMap.Disable();
+            m_Action.actionMap.AddAction("Pause", InputActionType.Button, binding: "<Keyboard>/space");
+            m_Action.actionMap.Enable();
+            m_UI.rebindOptions = new RebindOptions
+            {
+                duplicateBindingPolicy = DuplicateBindingPolicy.Reject,
+                duplicateBindingResolution = DuplicateBindingResolution.Allow
+            };
+
+            m_UI.StartInteractiveRebind();
+            m_Action.ApplyBindingOverride(0, "<Keyboard>/space");
+            m_UI.ongoingRebind.Complete();
+
+            Assert.That(m_Action.bindings[0].overridePath, Is.EqualTo("<Keyboard>/space"));
+        }
+
+        [Test]
+        public void DuplicateBinding_ReplaceRaisesResolutionEvent()
+        {
+            m_Action.actionMap.Disable();
+            m_Action.actionMap.AddAction("Pause", InputActionType.Button, binding: "<Keyboard>/space");
+            m_Action.actionMap.Enable();
+            m_UI.rebindOptions = new RebindOptions { duplicateBindingResolution = DuplicateBindingResolution.Replace };
+            var count = 0;
+            m_UI.duplicateResolutionEvent.AddListener((_, _, _, resolution) =>
+            {
+                if (resolution == DuplicateBindingResolution.Replace) count++;
+            });
+
+            m_UI.StartInteractiveRebind();
+            m_Action.ApplyBindingOverride(0, "<Keyboard>/space");
+            m_UI.ongoingRebind.Complete();
+
+            Assert.That(count, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void DuplicateBinding_SwapWithDefaultTargetMovesDefaultPath()
+        {
+            m_Action.actionMap.Disable();
+            var pause = m_Action.actionMap.AddAction("Pause", InputActionType.Button, binding: "<Keyboard>/space");
+            m_Action.actionMap.Enable();
+            m_UI.rebindOptions = new RebindOptions { duplicateBindingResolution = DuplicateBindingResolution.Swap };
+
+            m_UI.StartInteractiveRebind();
+            m_Action.ApplyBindingOverride(0, "<Keyboard>/space");
+            m_UI.ongoingRebind.Complete();
+
+            Assert.That(pause.bindings[0].overridePath, Is.EqualTo("<Keyboard>/space"));
+        }
+
+        [Test]
+        public void DuplicateBinding_AllowPolicyTakesPrecedenceOverReplaceResolution()
+        {
+            m_Action.actionMap.Disable();
+            var pause = m_Action.actionMap.AddAction("Pause", InputActionType.Button, binding: "<Keyboard>/space");
+            m_Action.actionMap.Enable();
+            m_UI.rebindOptions = new RebindOptions
+            {
+                duplicateBindingPolicy = DuplicateBindingPolicy.Allow,
+                duplicateBindingResolution = DuplicateBindingResolution.Replace
+            };
+
+            m_UI.StartInteractiveRebind();
+            m_Action.ApplyBindingOverride(0, "<Keyboard>/space");
+            m_UI.ongoingRebind.Complete();
+
+            Assert.That(m_Action.bindings[0].overridePath, Is.EqualTo("<Keyboard>/space"));
+            Assert.That(pause.bindings[0].overridePath, Is.Null.Or.Empty);
+        }
+
+        [Test]
+        public void DuplicateBinding_RejectResolutionRestoresOriginalOverride()
+        {
+            m_Action.actionMap.Disable();
+            m_Action.actionMap.AddAction("Pause", InputActionType.Button, binding: "<Keyboard>/space");
+            m_Action.actionMap.Enable();
+            m_Action.ApplyBindingOverride(0, "<Keyboard>/enter");
+            m_UI.rebindOptions = new RebindOptions { duplicateBindingResolution = DuplicateBindingResolution.Reject, maximumDuplicateRetries = 0 };
+
+            m_UI.StartInteractiveRebind();
+            m_Action.ApplyBindingOverride(0, "<Keyboard>/space");
+            m_UI.ongoingRebind.Complete();
+
+            Assert.That(m_Action.bindings[0].overridePath, Is.EqualTo("<Keyboard>/enter"));
+        }
+
+        [Test]
         public void InteractiveRebind_RequiredControlPathFiltersDevices()
         {
             var keyboard = InputSystem.AddDevice<Keyboard>();
@@ -643,6 +798,94 @@ namespace MLGWorks.RebindX.Tests
 
             Assert.That(messages, Does.Contain("Waiting for input"));
             Assert.That(messages, Does.Contain("Rebind cancelled"));
+        }
+
+        [TestCase("Keyboard", "<Keyboard>/enter", BindingDeviceKind.Keyboard, "keyboard.enter")]
+        [TestCase("Mouse", "<Mouse>/leftButton", BindingDeviceKind.Mouse, "mouse.left_button")]
+        [TestCase("Gamepad", "<Gamepad>/buttonSouth", BindingDeviceKind.Gamepad, "gamepad.button_south")]
+        public void DefaultDisplayProvider_IdentifiesCommonDevices(string layout, string path, BindingDeviceKind kind, string glyph)
+        {
+            var provider = new DefaultDeviceBindingDisplayProvider();
+
+            Assert.That(provider.GetDeviceKind(layout, path), Is.EqualTo(kind));
+            Assert.That(provider.GetGlyphKey(layout, path), Is.EqualTo(glyph));
+        }
+
+        [TestCase("<Joystick>/trigger", BindingDeviceKind.Joystick)]
+        [TestCase("<Touchscreen>/primaryTouch", BindingDeviceKind.Touchscreen)]
+        [TestCase("<XRController>/trigger", BindingDeviceKind.XR)]
+        [TestCase("<Pen>/tip", BindingDeviceKind.Pen)]
+        public void DefaultDisplayProvider_IdentifiesAdditionalDevices(string path, BindingDeviceKind kind)
+        {
+            var provider = new DefaultDeviceBindingDisplayProvider();
+
+            Assert.That(provider.GetDeviceKind(string.Empty, path), Is.EqualTo(kind));
+        }
+
+        [Test]
+        public void DefaultDisplayProvider_UnknownDeviceIsSafe()
+        {
+            var provider = new DefaultDeviceBindingDisplayProvider();
+
+            Assert.That(provider.GetDeviceKind("Unknown", "<Unknown>/control"), Is.EqualTo(BindingDeviceKind.Unknown));
+            Assert.That(provider.GetGlyphKey(null, null), Is.EqualTo("unknown"));
+            Assert.That(provider.GetPrompt(null, null), Is.EqualTo("Waiting for input..."));
+        }
+
+        [Test]
+        public void DefaultDisplayProvider_FormatsExpectedTypePrompt()
+        {
+            var provider = new DefaultDeviceBindingDisplayProvider();
+
+            Assert.That(provider.GetPrompt(null, null, "Button"), Is.EqualTo("Waiting for Button input..."));
+        }
+
+        [Test]
+        public void DefaultDisplayProvider_FormatsControlPrompt()
+        {
+            var provider = new DefaultDeviceBindingDisplayProvider();
+
+            Assert.That(provider.GetPrompt("Keyboard", "<Keyboard>/enter"), Does.Contain("Enter"));
+        }
+
+        [Test]
+        public void BindingDisplayEventReportsDeviceKindGlyphAndPrompt()
+        {
+            string kind = null;
+            string glyph = null;
+            string prompt = null;
+            m_UI.deviceBindingDisplayEvent.AddListener((_, reportedKind, reportedGlyph, reportedPrompt) =>
+            {
+                kind = reportedKind;
+                glyph = reportedGlyph;
+                prompt = reportedPrompt;
+            });
+
+            m_UI.UpdateBindingDisplay();
+
+            Assert.That(kind, Is.EqualTo("Keyboard"));
+            Assert.That(glyph, Does.Contain("keyboard"));
+            Assert.That(prompt, Does.Contain("Space"));
+        }
+
+        [Test]
+        public void BindingDisplayProvider_CanBeReplacedForCustomGlyphs()
+        {
+            m_UI.bindingDisplayProvider = new TestDisplayProvider();
+            string glyph = null;
+            m_UI.deviceBindingDisplayEvent.AddListener((_, _, reportedGlyph, _) => glyph = reportedGlyph);
+
+            m_UI.UpdateBindingDisplay();
+
+            Assert.That(glyph, Is.EqualTo("custom.glyph"));
+        }
+
+        [Test]
+        public void BindingDisplayProvider_NullAssignmentRestoresDefault()
+        {
+            m_UI.bindingDisplayProvider = null;
+
+            Assert.That(m_UI.bindingDisplayProvider, Is.TypeOf<DefaultDeviceBindingDisplayProvider>());
         }
     }
 }

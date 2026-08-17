@@ -9,6 +9,14 @@ namespace MLGWorks.RebindX.Runtime
         Allow
     }
 
+    public enum DuplicateBindingResolution
+    {
+        Reject,
+        Allow,
+        Replace,
+        Swap
+    }
+
     public enum DuplicateBindingScope
     {
         SameActionMap,
@@ -31,6 +39,7 @@ namespace MLGWorks.RebindX.Runtime
         public float timeoutSeconds;
         public bool cancelWhenDeviceIsRemoved = true;
         public DuplicateBindingPolicy duplicateBindingPolicy = DuplicateBindingPolicy.Reject;
+        public DuplicateBindingResolution duplicateBindingResolution = DuplicateBindingResolution.Reject;
         public DuplicateBindingScope duplicateBindingScope = DuplicateBindingScope.EntireAsset;
         public int maximumDuplicateRetries = 3;
 
@@ -47,6 +56,7 @@ namespace MLGWorks.RebindX.Runtime
                 timeoutSeconds = timeoutSeconds,
                 cancelWhenDeviceIsRemoved = cancelWhenDeviceIsRemoved,
                 duplicateBindingPolicy = duplicateBindingPolicy,
+                duplicateBindingResolution = duplicateBindingResolution,
                 duplicateBindingScope = duplicateBindingScope,
                 maximumDuplicateRetries = maximumDuplicateRetries
             };
