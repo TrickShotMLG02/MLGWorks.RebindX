@@ -375,5 +375,22 @@ namespace MLGWorks.RebindX.Tests
             Assert.That(options.controlPathsToMatch, Has.Count.EqualTo(1));
             Assert.That(options.controlPathsToExclude, Has.Count.EqualTo(1));
         }
+
+        [Test]
+        public void RebindOptions_ClonePreservesTimeoutAndDuplicateScope()
+        {
+            var options = new RebindOptions
+            {
+                timeoutSeconds = 3.5f,
+                cancelWhenDeviceIsRemoved = false,
+                duplicateBindingScope = DuplicateBindingScope.SameActionMap
+            };
+
+            var clone = options.Clone();
+
+            Assert.That(clone.timeoutSeconds, Is.EqualTo(3.5f));
+            Assert.That(clone.cancelWhenDeviceIsRemoved, Is.False);
+            Assert.That(clone.duplicateBindingScope, Is.EqualTo(DuplicateBindingScope.SameActionMap));
+        }
     }
 }

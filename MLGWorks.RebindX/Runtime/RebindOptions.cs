@@ -9,6 +9,12 @@ namespace MLGWorks.RebindX.Runtime
         Allow
     }
 
+    public enum DuplicateBindingScope
+    {
+        SameActionMap,
+        EntireAsset
+    }
+
     /// <summary>
     /// Controls how an interactive rebind selects controls and handles conflicts.
     /// Empty collections and optional values retain the Input System defaults.
@@ -22,7 +28,10 @@ namespace MLGWorks.RebindX.Runtime
         public string cancelControlPath = "<Keyboard>/escape";
         public string expectedControlType;
         public float minimumMagnitude;
+        public float timeoutSeconds;
+        public bool cancelWhenDeviceIsRemoved = true;
         public DuplicateBindingPolicy duplicateBindingPolicy = DuplicateBindingPolicy.Reject;
+        public DuplicateBindingScope duplicateBindingScope = DuplicateBindingScope.EntireAsset;
         public int maximumDuplicateRetries = 3;
 
         public RebindOptions Clone()
@@ -35,7 +44,10 @@ namespace MLGWorks.RebindX.Runtime
                 cancelControlPath = cancelControlPath,
                 expectedControlType = expectedControlType,
                 minimumMagnitude = minimumMagnitude,
+                timeoutSeconds = timeoutSeconds,
+                cancelWhenDeviceIsRemoved = cancelWhenDeviceIsRemoved,
                 duplicateBindingPolicy = duplicateBindingPolicy,
+                duplicateBindingScope = duplicateBindingScope,
                 maximumDuplicateRetries = maximumDuplicateRetries
             };
         }

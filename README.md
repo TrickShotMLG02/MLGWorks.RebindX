@@ -126,6 +126,8 @@ Each `RebindActionUI` has a **Rebind Policy** configuration. It can restrict acc
 
 Duplicate bindings are rejected by default. RebindX raises `duplicateBindingEvent` with the conflicting action name and control path, restores the previous binding, and retries up to **Maximum Duplicate Retries**. Set `Duplicate Binding Policy` to `Allow` when duplicate controls are intentional. A retry limit of zero rejects the attempted binding and ends the operation immediately.
 
+**Duplicate Binding Scope** controls whether conflicts are checked in the current action map or across the entire input asset. Bindings assigned exclusively to different control-scheme groups are not treated as conflicts; bindings with no groups are considered global. Set **Timeout Seconds** to cancel a rebind after that duration. `timeoutRebindEvent` is raised before cancellation. Removing an input device also cancels an active operation by default.
+
 The same options are available from code:
 
 ```csharp
@@ -140,6 +142,8 @@ rebindRow.rebindOptions.controlPathsToExclude.Add("<Gamepad>/leftStick");
 ```
 
 Subscribe to `duplicateBindingEvent` to display a user-facing conflict message. Its arguments are the row, the conflicting action name, and the rejected control path.
+
+`rebindAccessibilityEvent` reports status messages such as `Waiting for input`, `Rebind cancelled`, and `Rebind timed out`. Use it for screen-reader announcements or custom accessibility UI. The assigned overlay GameObject is activated only while an operation is active and is hidden on completion, cancellation, timeout, device removal, disable, or destruction.
 
 ## Display and UI events
 

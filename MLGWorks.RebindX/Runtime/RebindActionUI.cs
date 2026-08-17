@@ -11,10 +11,6 @@ using UnityEngine.Localization.Tables;
 
 namespace MLGWorks.RebindX.Runtime
 {
-    ////TODO: localization support
-
-    ////TODO: deal with composites that have parts bound in different control schemes
-
     /// <summary>
     /// A reusable component with a self-contained UI for rebinding a single action.
     /// </summary>
@@ -97,8 +93,6 @@ namespace MLGWorks.RebindX.Runtime
             set => m_RebindText = value;
         }
 
-        //// TODO: Implement rebind overlay and blur manager
-        /*
         /// <summary>
         /// Optional UI that is activated when an interactive rebind is started and deactivated when the rebind
         /// is finished. This is normally used to display an overlay over the current UI while the system is
@@ -110,19 +104,6 @@ namespace MLGWorks.RebindX.Runtime
         /// </remarks>
         /// <seealso cref="startRebindEvent"/>
         /// <seealso cref="rebindPrompt"/>
-        public ModalWindowManager rebindOverlay
-        {
-            get => m_RebindOverlay;
-            set => m_RebindOverlay = value;
-        }
-
-        public BlurManager blurManager
-        {
-            get => m_BlurManager;
-            set => m_BlurManager = value;
-        }
-        */
-
         public LocalizedString titleLocalization
         {
             get => m_titleLocalization;
@@ -205,6 +186,28 @@ namespace MLGWorks.RebindX.Runtime
                 return m_DuplicateBindingEvent;
             }
         }
+
+        public InteractiveRebindEvent timeoutRebindEvent
+        {
+            get
+            {
+                if (m_TimeoutRebindEvent == null)
+                    m_TimeoutRebindEvent = new InteractiveRebindEvent();
+                return m_TimeoutRebindEvent;
+            }
+        }
+
+        public RebindAccessibilityEvent rebindAccessibilityEvent
+        {
+            get
+            {
+                if (m_RebindAccessibilityEvent == null)
+                    m_RebindAccessibilityEvent = new RebindAccessibilityEvent();
+                return m_RebindAccessibilityEvent;
+            }
+        }
+
+        public bool isRebinding => m_RebindOperation != null;
 
         /// <summary>
         /// Return the action and binding index for the binding that is targeted by the component
@@ -389,6 +392,7 @@ namespace MLGWorks.RebindX.Runtime
 
             // Configure the rebind.
             var options = m_RebindOptions ?? new RebindOptions();
+            m_RebindStartedAt = Time.unscaledTime;
             m_RebindOperation = action.PerformInteractiveRebinding(bindingIndex);
             if (!string.IsNullOrWhiteSpace(options.bindingGroup))
                 m_RebindOperation.WithBindingGroup(options.bindingGroup);
@@ -431,6 +435,8 @@ namespace MLGWorks.RebindX.Runtime
                         */
                         UpdateBindingDisplay();
                         SetRebindOverlayVisible(false);
+                        RaiseAccessibility("Rebind cancelled");
+                        m_RebindStartedAt = -1f;
                         m_OriginalBindingOverride = null;
                         CleanUp();
                     })
@@ -438,6 +444,7 @@ namespace MLGWorks.RebindX.Runtime
                     operation =>
                     {
                         m_RebindStopEvent?.Invoke(this, operation);
+                        m_RebindStartedAt = -1f;
 
                         // Check for duplicates before accepting the new binding.
                         if (options.duplicateBindingPolicy == DuplicateBindingPolicy.Reject &&
@@ -482,6 +489,7 @@ namespace MLGWorks.RebindX.Runtime
 
                         UpdateBindingDisplay();
                         CleanUp();
+                        m_RebindStartedAt = -1f;
                         m_OriginalBindingOverride = null;
 
                         // If there's more composite parts we should bind, initiate a rebind
@@ -583,18 +591,9 @@ namespace MLGWorks.RebindX.Runtime
                 m_RebindText.text = text;
             }
 
-            //// TODO: Implement rebind overlay and blur manager
-            /*
-            // If we have no rebind overlay and no callback but we have a binding text label,
-            // temporarily set the binding text label to "<Waiting>".
-            if (m_RebindOverlay == null && m_RebindText == null && m_RebindStartEvent == null && m_BindingText != null)
-            {
-                m_BindingText.text = "<Waiting...>";
-            }
-            */
-
             // Give listeners a chance to act on the rebind starting.
             m_RebindStartEvent?.Invoke(this, m_RebindOperation);
+            RaiseAccessibility("Waiting for input");
 
             m_RebindOperation.Start();
         }
@@ -620,6 +619,11 @@ namespace MLGWorks.RebindX.Runtime
         {
             if (m_RebindOverlay != null)
                 m_RebindOverlay.SetActive(visible);
+        }
+
+        private void RaiseAccessibility(string text)
+        {
+            m_RebindAccessibilityEvent?.Invoke(this, text);
         }
 
         private void BeginCompositeRebind(InputAction action, int compositeIndex)
@@ -664,16 +668,22 @@ namespace MLGWorks.RebindX.Runtime
         {
             conflictingAction = null;
             InputBinding newBinding = action.bindings[bindingIndex];
-            foreach (InputBinding binding in action.actionMap.bindings)
+            var options = m_RebindOptions ?? new RebindOptions();
+            var maps = action.actionMap?.asset != null && options.duplicateBindingScope == DuplicateBindingScope.EntireAsset
+                ? action.actionMap.asset.actionMaps
+                : new[] { action.actionMap };
+            foreach (var map in maps)
             {
-                if (binding.action == newBinding.action)
-                {
+                if (map == null)
                     continue;
-                }
-
-                if (binding.effectivePath == newBinding.effectivePath)
+                foreach (InputBinding binding in map.bindings)
                 {
-                    conflictingAction = action.actionMap.FindAction(binding.action, throwIfNotFound: false);
+                    if (binding.action == newBinding.action ||
+                        binding.effectivePath != newBinding.effectivePath ||
+                        !ControlSchemeGroupsOverlap(binding.groups, newBinding.groups))
+                        continue;
+
+                    conflictingAction = map.FindAction(binding.action, throwIfNotFound: false);
                     return true;
                 }
             }
@@ -700,6 +710,18 @@ namespace MLGWorks.RebindX.Runtime
                 }
             }
 
+            return false;
+        }
+
+        private bool ControlSchemeGroupsOverlap(string first, string second)
+        {
+            if (string.IsNullOrEmpty(first) || string.IsNullOrEmpty(second))
+                return true;
+
+            foreach (var left in first.Split(InputBinding.Separator))
+            foreach (var right in second.Split(InputBinding.Separator))
+                if (left == right)
+                    return true;
             return false;
         }
 
@@ -756,6 +778,7 @@ namespace MLGWorks.RebindX.Runtime
 
         protected void OnEnable()
         {
+            InputSystem.onDeviceChange += OnDeviceChange;
             SetRebindOverlayVisible(false);
 
             // Replace the serialized reference with the manager's live action
@@ -805,6 +828,7 @@ namespace MLGWorks.RebindX.Runtime
 
         protected void OnDisable()
         {
+            InputSystem.onDeviceChange -= OnDeviceChange;
             m_RebindOperation?.Cancel();
 
             // Cancellation normally invokes CleanUp synchronously. Keep this fallback so disabling
@@ -813,6 +837,7 @@ namespace MLGWorks.RebindX.Runtime
             m_RebindOperation = null;
             m_RebindSession?.Cancel();
             m_RebindSession = null;
+            m_RebindStartedAt = -1f;
             SetRebindOverlayVisible(false);
 
             if (s_RebindActionUIs == null)
@@ -907,6 +932,12 @@ namespace MLGWorks.RebindX.Runtime
         [SerializeField]
         private InteractiveRebindEvent m_RebindStopEvent;
 
+        [SerializeField]
+        private InteractiveRebindEvent m_TimeoutRebindEvent;
+
+        [SerializeField]
+        private RebindAccessibilityEvent m_RebindAccessibilityEvent;
+
         [Tooltip("Controls accepted, excluded, and conflict behavior for interactive rebinding.")]
         [SerializeField]
         private RebindOptions m_RebindOptions = new RebindOptions();
@@ -919,6 +950,7 @@ namespace MLGWorks.RebindX.Runtime
         private RebindSession m_RebindSession;
         private Dictionary<int, string> m_CompositeOverrideBackup;
         private string m_OriginalBindingOverride;
+        private float m_RebindStartedAt = -1f;
 
         private static List<RebindActionUI> s_RebindActionUIs;
 
@@ -957,6 +989,32 @@ namespace MLGWorks.RebindX.Runtime
         [Serializable]
         public class InteractiveRebindEvent : UnityEvent<RebindActionUI, InputActionRebindingExtensions.RebindingOperation>
         {
+        }
+
+        [Serializable]
+        public class RebindAccessibilityEvent : UnityEvent<RebindActionUI, string>
+        {
+        }
+
+        private void Update()
+        {
+            if (m_RebindOperation == null || m_RebindOptions == null || m_RebindOptions.timeoutSeconds <= 0 ||
+                m_RebindStartedAt < 0 || Time.unscaledTime - m_RebindStartedAt < m_RebindOptions.timeoutSeconds)
+                return;
+
+            timeoutRebindEvent.Invoke(this, m_RebindOperation);
+            RaiseAccessibility("Rebind timed out");
+            m_RebindOperation.Cancel();
+        }
+
+        private void OnDeviceChange(InputDevice device, InputDeviceChange change)
+        {
+            if (m_RebindOperation == null || m_RebindOptions == null || !m_RebindOptions.cancelWhenDeviceIsRemoved ||
+                change != InputDeviceChange.Removed)
+                return;
+
+            RaiseAccessibility("Rebind cancelled because a device was removed");
+            m_RebindOperation.Cancel();
         }
 
         [Serializable]

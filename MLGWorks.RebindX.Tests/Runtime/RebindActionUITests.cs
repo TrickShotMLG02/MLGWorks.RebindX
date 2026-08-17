@@ -499,5 +499,67 @@ namespace MLGWorks.RebindX.Tests
             Assert.That(m_UI.ongoingRebind, Is.Not.Null);
             m_UI.CancelInteractiveRebind();
         }
+
+        [Test]
+        public void DuplicateBinding_DetectsConflictsInAnotherActionMap()
+        {
+            m_Action.actionMap.Disable();
+            var otherMap = m_Asset.AddActionMap("Menus");
+            otherMap.AddAction("Pause", InputActionType.Button, binding: "<Keyboard>/space");
+            m_Action.actionMap.Enable();
+            m_UI.rebindOptions = new RebindOptions { maximumDuplicateRetries = 0 };
+            var conflicts = new List<string>();
+            m_UI.duplicateBindingEvent.AddListener((_, actionName, _) => conflicts.Add(actionName));
+
+            m_UI.StartInteractiveRebind();
+            m_Action.ApplyBindingOverride(0, "<Keyboard>/space");
+            m_UI.ongoingRebind.Complete();
+
+            Assert.That(conflicts, Is.EqualTo(new[] { "Pause" }));
+            Assert.That(m_UI.ongoingRebind, Is.Null);
+        }
+
+        [Test]
+        public void InteractiveRebind_TimeoutCancelsAndRaisesTimeoutEvent()
+        {
+            m_UI.rebindOptions = new RebindOptions { timeoutSeconds = 0.001f };
+            var timeoutCount = 0;
+            m_UI.timeoutRebindEvent.AddListener((_, _) => timeoutCount++);
+            m_UI.StartInteractiveRebind();
+
+            typeof(RebindActionUI).GetField("m_RebindStartedAt", BindingFlags.Instance | BindingFlags.NonPublic)
+                .SetValue(m_UI, 0f);
+            typeof(RebindActionUI).GetMethod("Update", BindingFlags.Instance | BindingFlags.NonPublic)
+                .Invoke(m_UI, null);
+
+            Assert.That(timeoutCount, Is.EqualTo(1));
+            Assert.That(m_UI.ongoingRebind, Is.Null);
+        }
+
+        [Test]
+        public void InteractiveRebind_DeviceRemovalCancelsOperation()
+        {
+            var gamepad = InputSystem.AddDevice<Gamepad>();
+            m_UI.StartInteractiveRebind();
+
+            typeof(RebindActionUI).GetMethod("OnDeviceChange", BindingFlags.Instance | BindingFlags.NonPublic)
+                .Invoke(m_UI, new object[] { gamepad, InputDeviceChange.Removed });
+
+            Assert.That(m_UI.ongoingRebind, Is.Null);
+            Assert.That(m_Action.enabled, Is.True);
+        }
+
+        [Test]
+        public void InteractiveRebind_AccessibilityEventReportsStateChanges()
+        {
+            var messages = new List<string>();
+            m_UI.rebindAccessibilityEvent.AddListener((_, message) => messages.Add(message));
+
+            m_UI.StartInteractiveRebind();
+            m_UI.CancelInteractiveRebind();
+
+            Assert.That(messages, Does.Contain("Waiting for input"));
+            Assert.That(messages, Does.Contain("Rebind cancelled"));
+        }
     }
 }

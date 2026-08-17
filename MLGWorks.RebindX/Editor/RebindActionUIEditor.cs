@@ -26,6 +26,8 @@ namespace MLGWorks.RebindX.Runtime.Editors
             m_UpdateBindingUIEventProperty = serializedObject.FindProperty("m_UpdateBindingUIEvent");
             m_RebindStartEventProperty = serializedObject.FindProperty("m_RebindStartEvent");
             m_RebindStopEventProperty = serializedObject.FindProperty("m_RebindStopEvent");
+            m_TimeoutRebindEventProperty = serializedObject.FindProperty("m_TimeoutRebindEvent");
+            m_RebindAccessibilityEventProperty = serializedObject.FindProperty("m_RebindAccessibilityEvent");
             m_RebindOptionsProperty = serializedObject.FindProperty("m_RebindOptions");
             m_DuplicateBindingEventProperty = serializedObject.FindProperty("m_DuplicateBindingEvent");
             m_DisplayStringOptionsProperty = serializedObject.FindProperty("m_DisplayStringOptions");
@@ -80,6 +82,8 @@ namespace MLGWorks.RebindX.Runtime.Editors
             {
                 EditorGUILayout.PropertyField(m_RebindStartEventProperty);
                 EditorGUILayout.PropertyField(m_RebindStopEventProperty);
+                EditorGUILayout.PropertyField(m_TimeoutRebindEventProperty);
+                EditorGUILayout.PropertyField(m_RebindAccessibilityEventProperty);
                 EditorGUILayout.PropertyField(m_UpdateBindingUIEventProperty);
                 EditorGUILayout.PropertyField(m_DuplicateBindingEventProperty);
             }
@@ -190,6 +194,8 @@ namespace MLGWorks.RebindX.Runtime.Editors
         private SerializedProperty m_RebindTextProperty;
         private SerializedProperty m_RebindStartEventProperty;
         private SerializedProperty m_RebindStopEventProperty;
+        private SerializedProperty m_TimeoutRebindEventProperty;
+        private SerializedProperty m_RebindAccessibilityEventProperty;
         private SerializedProperty m_UpdateBindingUIEventProperty;
         private SerializedProperty m_RebindOptionsProperty;
         private SerializedProperty m_DuplicateBindingEventProperty;
