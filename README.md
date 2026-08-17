@@ -21,7 +21,7 @@ RebindX changes binding overrides at runtime. It does not modify the original `.
 The manager's existing Inspector configuration and methods remain compatible. Advanced integrations can replace the default persistence service:
 
 ```csharp
-RebindManager.Instance.OverrideStore = new InMemoryBindingOverrideStore();
+rebindManager.OverrideStore = new InMemoryBindingOverrideStore();
 ```
 
 For a production backend such as cloud saves, implement `IBindingOverrideStore` and assign it before calling `SaveRebinds` or `LoadRebinds`. Store operations return a `BindingOverrideResult` with a `Code`, `Message`, and `Succeeded` flag. The store receives the active `InputActionAsset`; it does not own the asset or the manager lifetime.
@@ -56,7 +56,7 @@ Create an active GameObject, add `RebindManager`, and configure it in the Inspec
 
 Set **Input Action Asset** to the asset that should be used by the game. The manager enables the asset during startup and loads saved overrides. If no asset is assigned, the component uses the generated `PlayerInputControls` wrapper included in the package.
 
-Only one manager should normally exist. `RebindManager` is a singleton and duplicate instances are ignored/destroyed by the singleton base class.
+`RebindManager` is a normal component and does not enforce a global singleton. Use one manager per input asset/profile when supporting split-screen players, local multiplayer, or separate settings contexts. Assign each `RebindActionUI.rebindManager` explicitly so rows use the intended asset and persistence profile.
 
 ### 3. Configure persistence
 
@@ -195,7 +195,8 @@ For a composite header, this removes overrides from every part. To reset the ent
 The manager also exposes:
 
 ```csharp
-var manager = RebindManager.Instance;
+var manager = FindFirstObjectByType<RebindManager>();
+// Prefer a serialized reference or dependency injection in reusable code.
 manager.SaveRebinds();
 manager.LoadRebinds();
 manager.ResetRebinds();
@@ -213,7 +214,7 @@ using MLGWorks.RebindX.Runtime;
 
 public void UseLoadedAsset(InputActionAsset loadedAsset)
 {
-    RebindManager.Instance.SetActionAsset(loadedAsset);
+    rebindManager.SetActionAsset(loadedAsset);
 }
 ```
 
@@ -223,7 +224,7 @@ If using the generated wrapper instead:
 
 ```csharp
 var controls = new PlayerInputControls();
-RebindManager.Instance.SetControls(controls);
+rebindManager.SetControls(controls);
 ```
 
 The manager takes ownership of the wrapper and disposes the previously managed wrapper when replaced.

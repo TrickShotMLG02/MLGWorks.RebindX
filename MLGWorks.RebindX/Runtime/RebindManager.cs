@@ -1,7 +1,5 @@
-using MLGWorks.Utils.Patterns;
 using System;
 using System.IO;
-using MLGWorks.Utils.Patterns.Singletons;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
@@ -15,7 +13,7 @@ namespace MLGWorks.RebindX.Runtime
     }
 
     [DefaultExecutionOrder(-1000)]
-    public class RebindManager : Singleton<RebindManager>, IBindingOverrideService
+    public class RebindManager : MonoBehaviour, IBindingOverrideService
     {
         [Header("Rebinds File Location")]
         [SerializeField] private FileLocationType pathType = FileLocationType.PersistentDataPath;
@@ -33,6 +31,12 @@ namespace MLGWorks.RebindX.Runtime
         private IBindingOverrideStore m_OverrideStore;
         public PlayerInputControls Controls => _controls;
         public InputActionAsset ActionAsset => _actionAsset;
+
+        /// <summary>
+        /// Gets the stable persistence profile identifier used by this manager.
+        /// Empty values use the generated asset identity.
+        /// </summary>
+        public string ProfileId => profileId;
 
         public IRebindPathProvider PathProvider
         {
@@ -68,17 +72,8 @@ namespace MLGWorks.RebindX.Runtime
             }
         }
 
-        protected override void Awake()
+        protected virtual void Awake()
         {
-            base.Awake();
-
-            // The base singleton destroys duplicate objects. Do not initialize a
-            // duplicate's input asset before Unity removes it.
-            if (Instance != this)
-            {
-                return;
-            }
-
             m_AssetProvider = null;
             m_PathProvider = null;
             m_OverrideStore = null;
@@ -98,6 +93,26 @@ namespace MLGWorks.RebindX.Runtime
             }
 
             LoadRebinds();
+        }
+
+        /// <summary>
+        /// Changes the persistence profile used by this manager and reloads its asset.
+        /// This enables profile switching without relying on a global manager.
+        /// </summary>
+        public void SetProfileId(string value)
+        {
+            profileId = value ?? string.Empty;
+            m_OverrideStore = null;
+            if (_actionAsset != null)
+                LoadRebinds();
+        }
+
+        protected virtual void OnDestroy()
+        {
+            m_AssetProvider?.Dispose();
+            m_AssetProvider = null;
+            _controls = null;
+            _actionAsset = null;
         }
 
         public void SetControls(PlayerInputControls controls)

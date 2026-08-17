@@ -508,8 +508,6 @@ namespace MLGWorks.RebindX.Runtime
                                 // only hide the overlay if we're done with all parts
                                 m_RebindOverlay.ModalWindowOut();
                                 m_BlurManager.BlurOutAnim();
-                                RebindManager.Instance.SwitchToUI();
-
                                 // save rebinds to file only if all parts are done
                                 SaveRebinds();
                                 if (m_RebindText != null)
@@ -534,8 +532,6 @@ namespace MLGWorks.RebindX.Runtime
                             // only hide the overlay if we're done with all parts
                             m_RebindOverlay.ModalWindowOut();
                             m_BlurManager.BlurOutAnim();
-                            RebindManager.Instance.SwitchToUI();
-
                             // save rebinds to file only if all parts are done
                             SaveRebinds();
                             if (m_RebindText != null)

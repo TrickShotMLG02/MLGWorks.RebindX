@@ -28,6 +28,8 @@ namespace MLGWorks.RebindX.Tests
             SetPrivateField("pathType", FileLocationType.Custom);
             SetPrivateField("customPath", m_TestDirectory);
             SetPrivateField("fileName", "bindings.json");
+            SetPrivateField("m_PathProvider", null);
+            SetPrivateField("m_OverrideStore", null);
 
             m_Asset = ScriptableObject.CreateInstance<InputActionAsset>();
             var map = m_Asset.AddActionMap("Gameplay");
@@ -212,6 +214,50 @@ namespace MLGWorks.RebindX.Tests
         }
 
         [Test]
+        public void MultipleManagers_CanOwnDifferentAssetsAndProfiles()
+        {
+            var secondObject = new GameObject("Second RebindManager Test");
+            var secondManager = secondObject.AddComponent<RebindManager>();
+            var secondAsset = ScriptableObject.CreateInstance<InputActionAsset>();
+            secondAsset.AddActionMap("Menus").AddAction("Pause", InputActionType.Button,
+                binding: "<Keyboard>/escape");
+
+            ConfigureManager(secondManager, "profile-b", "bindings-b.json");
+            secondManager.SetActionAsset(secondAsset);
+            m_Manager.SetProfileId("profile-a");
+            secondManager.SetProfileId("profile-b");
+
+            var firstAction = m_Asset.FindAction("Gameplay/Jump");
+            var secondAction = secondAsset.FindAction("Menus/Pause");
+            firstAction.ApplyBindingOverride(0, "<Keyboard>/enter");
+            secondAction.ApplyBindingOverride(0, "<Keyboard>/tab");
+
+            Assert.That(m_Manager.SaveRebinds().Succeeded, Is.True);
+            Assert.That(secondManager.SaveRebinds().Succeeded, Is.True);
+
+            firstAction.RemoveBindingOverride(0);
+            secondAction.RemoveBindingOverride(0);
+            Assert.That(m_Manager.LoadRebinds().Succeeded, Is.True);
+            Assert.That(secondManager.LoadRebinds().Succeeded, Is.True);
+
+            Assert.That(firstAction.bindings[0].overridePath, Is.EqualTo("<Keyboard>/enter"));
+            Assert.That(secondAction.bindings[0].overridePath, Is.EqualTo("<Keyboard>/tab"));
+
+            Object.DestroyImmediate(secondObject);
+            Object.DestroyImmediate(secondAsset);
+        }
+
+        [Test]
+        public void SetProfileId_UsesNewProfileWithoutChangingManagedAsset()
+        {
+            var asset = m_Manager.ActionAsset;
+            m_Manager.SetProfileId("alternate");
+
+            Assert.That(m_Manager.ProfileId, Is.EqualTo("alternate"));
+            Assert.That(m_Manager.ActionAsset, Is.SameAs(asset));
+        }
+
+        [Test]
         public void CustomPath_RejectsBlankConfiguration()
         {
             SetPrivateField("customPath", "");
@@ -221,9 +267,24 @@ namespace MLGWorks.RebindX.Tests
 
         private void SetPrivateField(string name, object value)
         {
+            SetPrivateField(m_Manager, name, value);
+        }
+
+        private void ConfigureManager(RebindManager manager, string profile, string file = "bindings.json")
+        {
+            SetPrivateField(manager, "pathType", FileLocationType.Custom);
+            SetPrivateField(manager, "customPath", m_TestDirectory);
+            SetPrivateField(manager, "fileName", file);
+            SetPrivateField(manager, "profileId", profile);
+            SetPrivateField(manager, "m_PathProvider", null);
+            SetPrivateField(manager, "m_OverrideStore", null);
+        }
+
+        private static void SetPrivateField(RebindManager manager, string name, object value)
+        {
             typeof(RebindManager)
                 .GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)
-                .SetValue(m_Manager, value);
+                .SetValue(manager, value);
         }
     }
 }

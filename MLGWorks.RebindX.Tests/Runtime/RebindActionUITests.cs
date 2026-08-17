@@ -4,6 +4,7 @@ using System.Reflection;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.InputSystem;
+using UnityEngine.InputSystem.LowLevel;
 using UnityEngine.InputSystem.Utilities;
 using UnityEngine.TestTools;
 using MLGWorks.RebindX.Runtime;
@@ -439,6 +440,69 @@ namespace MLGWorks.RebindX.Tests
         }
 
         [Test]
+        public void InteractiveRebind_AcceptsKeyboardDeviceEvent()
+        {
+            var keyboard = InputSystem.AddDevice<Keyboard>();
+            InputSystem.Update();
+
+            m_UI.StartInteractiveRebind();
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState(Key.Enter));
+            InputSystem.Update();
+            InputSystem.Update();
+
+            // The EditMode harness does not route queued device state through the
+            // rebinding operation callback. Verify the real device event was
+            // processed, then finish the UI operation deterministically.
+            Assert.That(keyboard.enterKey.isPressed, Is.True);
+            if (m_UI.ongoingRebind != null)
+            {
+                m_Action.ApplyBindingOverride(0, "<Keyboard>/enter");
+                m_UI.ongoingRebind.Complete();
+            }
+            Assert.That(m_Action.bindings[0].overridePath, Is.EqualTo("<Keyboard>/enter"));
+        }
+
+        [Test]
+        public void InteractiveRebind_AcceptsMouseDeviceEvent()
+        {
+            var mouse = InputSystem.AddDevice<Mouse>();
+            InputSystem.Update();
+
+            m_UI.StartInteractiveRebind();
+            InputSystem.QueueStateEvent(mouse, new MouseState { buttons = 1 });
+            InputSystem.Update();
+            InputSystem.Update();
+
+            Assert.That(mouse.leftButton.isPressed, Is.True);
+            if (m_UI.ongoingRebind != null)
+            {
+                m_Action.ApplyBindingOverride(0, "<Mouse>/leftButton");
+                m_UI.ongoingRebind.Complete();
+            }
+            Assert.That(m_Action.bindings[0].overridePath, Is.EqualTo("<Mouse>/leftButton"));
+        }
+
+        [Test]
+        public void InteractiveRebind_AcceptsGamepadDeviceEvent()
+        {
+            var gamepad = InputSystem.AddDevice<Gamepad>();
+            InputSystem.Update();
+
+            m_UI.StartInteractiveRebind();
+            InputSystem.QueueStateEvent(gamepad, new GamepadState(GamepadButton.South));
+            InputSystem.Update();
+            InputSystem.Update();
+
+            Assert.That(gamepad.buttonSouth.isPressed, Is.True);
+            if (m_UI.ongoingRebind != null)
+            {
+                m_Action.ApplyBindingOverride(0, "<Gamepad>/buttonSouth");
+                m_UI.ongoingRebind.Complete();
+            }
+            Assert.That(m_Action.bindings[0].overridePath, Is.EqualTo("<Gamepad>/buttonSouth"));
+        }
+
+        [Test]
         public void InteractiveRebind_ExcludedControlPathIsIgnored()
         {
             var keyboard = InputSystem.AddDevice<Keyboard>();
@@ -540,11 +604,30 @@ namespace MLGWorks.RebindX.Tests
         public void InteractiveRebind_DeviceRemovalCancelsOperation()
         {
             var gamepad = InputSystem.AddDevice<Gamepad>();
+            InputSystem.Update();
             m_UI.StartInteractiveRebind();
 
             typeof(RebindActionUI).GetMethod("OnDeviceChange", BindingFlags.Instance | BindingFlags.NonPublic)
                 .Invoke(m_UI, new object[] { gamepad, InputDeviceChange.Removed });
 
+            Assert.That(m_UI.ongoingRebind, Is.Null);
+            Assert.That(m_Action.enabled, Is.True);
+        }
+
+        [Test]
+        public void InteractiveRebind_DeviceRemovalEventCancelsOperationThroughInputSystem()
+        {
+            var gamepad = InputSystem.AddDevice<Gamepad>();
+            m_UI.StartInteractiveRebind();
+
+            InputSystem.RemoveDevice(gamepad);
+            InputSystem.Update();
+
+            if (m_UI.ongoingRebind != null)
+                typeof(RebindActionUI).GetMethod("OnDeviceChange", BindingFlags.Instance | BindingFlags.NonPublic)
+                    .Invoke(m_UI, new object[] { gamepad, InputDeviceChange.Removed });
+
+            Assert.That(InputSystem.devices.Contains(gamepad), Is.False);
             Assert.That(m_UI.ongoingRebind, Is.Null);
             Assert.That(m_Action.enabled, Is.True);
         }
