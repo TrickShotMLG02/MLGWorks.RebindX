@@ -147,6 +147,48 @@ namespace MLGWorks.RebindX.Tests
         }
 
         [Test]
+        public void RebindSession_RestoresMapStateWithoutEnablingOtherActions()
+        {
+            var asset = CreateAsset();
+            var map = asset.FindActionMap("Gameplay");
+            map.Disable();
+            var otherMap = asset.AddActionMap("Other");
+            var otherAction = otherMap.AddAction("Pause", InputActionType.Button, binding: "<Keyboard>/escape");
+            otherMap.Disable();
+            var action = asset.FindAction("Gameplay/Jump");
+            action.Enable();
+
+            using (var session = new RebindSession())
+            {
+                session.Begin(action);
+                session.Complete();
+            }
+
+            Assert.That(action.enabled, Is.True);
+            Assert.That(otherAction.enabled, Is.False);
+            Assert.That(map.enabled, Is.True);
+            Assert.That(otherMap.enabled, Is.False);
+            Assert.That(asset.enabled, Is.True);
+        }
+
+        [Test]
+        public void RebindSession_RestoresInitiallyDisabledAsset()
+        {
+            var asset = CreateAsset();
+            var action = asset.FindAction("Gameplay/Jump");
+            asset.Disable();
+
+            using (var session = new RebindSession())
+            {
+                session.Begin(action);
+                session.Complete();
+            }
+
+            Assert.That(asset.enabled, Is.False);
+            Assert.That(action.enabled, Is.False);
+        }
+
+        [Test]
         public void InMemoryStore_RejectsNullAssetOnSave()
         {
             Assert.Throws<System.ArgumentNullException>(() => new InMemoryBindingOverrideStore().Save(null));

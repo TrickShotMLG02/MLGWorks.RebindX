@@ -524,6 +524,23 @@ namespace MLGWorks.RebindX.Runtime
             m_RebindOperation.Start();
         }
 
+        public RebindManager rebindManager
+        {
+            get => m_RebindManager;
+            set
+            {
+                m_RebindManager = value;
+                m_BindingOverrideService = value;
+                UpdateBindingDisplay();
+            }
+        }
+
+        public IBindingOverrideService bindingOverrideService
+        {
+            get => m_BindingOverrideService ?? m_RebindManager;
+            set => m_BindingOverrideService = value;
+        }
+
         private void SetRebindOverlayVisible(bool visible)
         {
             if (m_RebindOverlay != null)
@@ -608,8 +625,7 @@ namespace MLGWorks.RebindX.Runtime
 
         private void SaveRebinds()
         {
-            var manager = FindFirstObjectByType<RebindManager>();
-            manager?.SaveRebinds();
+            bindingOverrideService?.SaveRebinds();
         }
 
         private string ConvertActionToIdentifier(InputActionReference action)
@@ -653,7 +669,7 @@ namespace MLGWorks.RebindX.Runtime
 
             // Replace the serialized reference with the manager's live action
             // while preserving its action map.
-            var manager = FindFirstObjectByType<RebindManager>();
+            var manager = m_RebindManager;
             if (manager != null && m_Action != null && m_Action.action != null)
             {
                 var actionName = m_Action.action.actionMap != null
@@ -755,6 +771,12 @@ namespace MLGWorks.RebindX.Runtime
         [Tooltip("Reference to action that is to be rebound from the UI.")]
         [SerializeField]
         private InputActionReference m_Action;
+
+        [Tooltip("Optional manager whose live action asset and persistence service are used by this row.")]
+        [SerializeField]
+        private RebindManager m_RebindManager;
+
+        private IBindingOverrideService m_BindingOverrideService;
 
         [SerializeField]
         private string m_BindingId;

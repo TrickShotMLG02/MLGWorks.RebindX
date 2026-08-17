@@ -17,6 +17,7 @@ namespace MLGWorks.RebindX.Runtime.Editors
         protected void OnEnable()
         {
             m_ActionProperty = serializedObject.FindProperty("m_Action");
+            m_RebindManagerProperty = serializedObject.FindProperty("m_RebindManager");
             m_BindingIdProperty = serializedObject.FindProperty("m_BindingId");
             m_ActionLabelProperty = serializedObject.FindProperty("m_ActionLabel");
             m_BindingTextProperty = serializedObject.FindProperty("m_BindingText");
@@ -41,6 +42,7 @@ namespace MLGWorks.RebindX.Runtime.Editors
             using (new EditorGUI.IndentLevelScope())
             {
                 EditorGUILayout.PropertyField(m_ActionProperty);
+                EditorGUILayout.PropertyField(m_RebindManagerProperty);
 
                 var newSelectedBinding = EditorGUILayout.Popup(m_BindingLabel, m_SelectedBindingOption, m_BindingOptions);
                 if (newSelectedBinding != m_SelectedBindingOption)
@@ -170,6 +172,7 @@ namespace MLGWorks.RebindX.Runtime.Editors
         }
 
         private SerializedProperty m_ActionProperty;
+        private SerializedProperty m_RebindManagerProperty;
         private SerializedProperty m_BindingIdProperty;
         private SerializedProperty m_ActionLabelProperty;
         private SerializedProperty m_BindingTextProperty;

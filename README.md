@@ -79,10 +79,11 @@ Add `RebindActionUI` to a GameObject in your settings UI for each binding the pl
 In the Inspector:
 
 1. Assign **Action** to an `InputActionReference`.
-2. Select the target binding in the **Binding** popup.
-3. Optionally assign **Binding Text** and **Action Label** TextMeshPro components.
-4. Optionally assign a **Rebind Text** prompt or a **Rebind Overlay** GameObject.
-5. Use **Display Options** to control how Unity formats the binding display.
+2. Assign the appropriate **Rebind Manager** for the input profile that owns this row. This explicit reference is important when using multiple profiles or input assets.
+3. Select the target binding in the **Binding** popup.
+4. Optionally assign **Binding Text** and **Action Label** TextMeshPro components.
+5. Optionally assign a **Rebind Text** prompt or a **Rebind Overlay** GameObject.
+6. Use **Display Options** to control how Unity formats the binding display.
 
 The custom inspector writes the selected binding's stable GUID to `bindingId`. This is preferable to selecting a binding by array index because indices can change when bindings are edited.
 
@@ -114,6 +115,8 @@ public class RebindButton : MonoBehaviour
 ```
 
 `StartInteractiveRebind()` disables the target action while Unity waits for input, then restores its previous enabled state when the operation completes or is cancelled. Calling `CancelInteractiveRebind()` while idle is safe.
+
+The session also restores the original action-map and action-asset enabled states. A rebind cannot accidentally enable unrelated actions that were disabled before the operation.
 
 ## Display and UI events
 

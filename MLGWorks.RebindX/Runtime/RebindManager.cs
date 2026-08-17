@@ -15,7 +15,7 @@ namespace MLGWorks.RebindX.Runtime
     }
 
     [DefaultExecutionOrder(-1000)]
-    public class RebindManager : Singleton<RebindManager>
+    public class RebindManager : Singleton<RebindManager>, IBindingOverrideService
     {
         [Header("Rebinds File Location")]
         [SerializeField] private FileLocationType pathType = FileLocationType.PersistentDataPath;

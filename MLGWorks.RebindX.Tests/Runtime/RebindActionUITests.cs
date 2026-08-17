@@ -11,6 +11,16 @@ namespace MLGWorks.RebindX.Tests
 {
     public sealed class RebindActionUITests : InputTestFixture
     {
+        private sealed class TestOverrideService : IBindingOverrideService
+        {
+            public InputActionAsset ActionAsset { get; set; }
+            public int SaveCount { get; private set; }
+            public int LoadCount { get; private set; }
+
+            public void SaveRebinds() => SaveCount++;
+            public void LoadRebinds() => LoadCount++;
+        }
+
         private InputActionAsset m_Asset;
         private InputAction m_Action;
         private RebindActionUI m_UI;
@@ -192,6 +202,18 @@ namespace MLGWorks.RebindX.Tests
             Assert.That(m_UI.ongoingRebind, Is.Not.Null);
             Assert.That(m_UI.ongoingRebind, Is.Not.SameAs(firstOperation));
             m_UI.CancelInteractiveRebind();
+        }
+
+        [Test]
+        public void InteractiveRebind_UsesExplicitOverrideService()
+        {
+            var service = new TestOverrideService { ActionAsset = m_Asset };
+            m_UI.bindingOverrideService = service;
+            m_UI.StartInteractiveRebind();
+            m_Action.ApplyBindingOverride(0, "<Keyboard>/enter");
+            m_UI.ongoingRebind.Complete();
+
+            Assert.That(service.SaveCount, Is.EqualTo(1));
         }
 
         [Test]

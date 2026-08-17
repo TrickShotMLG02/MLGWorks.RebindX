@@ -5,6 +5,13 @@ using UnityEngine.InputSystem;
 
 namespace MLGWorks.RebindX.Runtime
 {
+    public interface IBindingOverrideService
+    {
+        InputActionAsset ActionAsset { get; }
+        void SaveRebinds();
+        void LoadRebinds();
+    }
+
     public interface IBindingOverrideStore
     {
         void Save(InputActionAsset actionAsset);
