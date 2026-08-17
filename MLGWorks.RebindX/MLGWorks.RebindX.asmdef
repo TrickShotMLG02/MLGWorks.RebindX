@@ -2,7 +2,6 @@
     "name": "MLGWorks.RebindX",
     "rootNamespace": "",
     "references": [
-        "GUID:9440d5481d78b0e4a9bc9fd7ede8c8bc",
         "GUID:75469ad4d38634e559750d17036d5f7c"
     ],
     "includePlatforms": [],

@@ -1,0 +1,27 @@
+{
+  "name": "com.mlgworks.rebindx",
+  "version": "1.0.1",
+  "displayName": "MLGWorks RebindX",
+  "description": "Runtime rebinding, binding profiles, conflict resolution, persistence, and device-aware UI for Unity's Input System.",
+  "unity": "2022.3",
+  "unityRelease": "0f1",
+  "documentationUrl": "https://github.com/TrickShotMLG02/RebindX/blob/master/Assets/MLGWorks.RebindX/README.md",
+  "changelogUrl": "https://github.com/TrickShotMLG02/RebindX/blob/master/Assets/MLGWorks.RebindX/CHANGELOG.md",
+  "author": {
+    "name": "MLGWorks",
+    "url": "https://github.com/TrickShotMLG02"
+  },
+  "keywords": [
+    "input",
+    "input-system",
+    "rebind",
+    "controls",
+    "settings"
+  ],
+  "dependencies": {
+    "com.unity.inputsystem": "1.7.0",
+    "com.unity.nuget.newtonsoft-json": "3.2.2",
+    "com.unity.textmeshpro": "3.0.6",
+    "com.unity.localization": "1.5.0"
+  }
+}

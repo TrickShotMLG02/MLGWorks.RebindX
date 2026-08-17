@@ -64,3 +64,8 @@ Documentation/*.synctex.gz
 Documentation/*.toc
 Documentation/*.xdv
 Documentation/_build/
+Documentation/_build.meta
+Documentation/*.meta
+Documentation.meta
+CHANGELOG.md.meta
+package.json.meta

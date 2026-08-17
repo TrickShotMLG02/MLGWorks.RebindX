@@ -30,7 +30,18 @@ For a production backend such as cloud saves, implement `IBindingOverrideStore` 
 
 - Unity with the Input System package enabled.
 - The Input System package's `InputActionAsset`, `InputActionReference`, and interactive rebinding APIs.
-- The included `MLGWorks.Utils` dependency. Keep the `MLGWorks.Utils` submodule checked out when using the source repository.
+
+### Install through UPM
+
+The package root is this directory and contains `package.json`. In Unity, open **Window > Package Manager**, choose **+ > Add package from git URL**, and enter:
+
+```text
+https://github.com/TrickShotMLG02/RebindX.git?path=/Assets/MLGWorks.RebindX
+```
+
+You can also install a local checkout with **Add package from disk** and select this folder's `package.json`. The package declares Unity Input System, Newtonsoft JSON, TextMeshPro, and Localization dependencies. RebindX does not require `MLGWorks.Utils`.
+
+Install `MLGWorks.Utils` separately only if another asset in your project uses it.
 
 The core runtime assembly is `MLGWorks.RebindX`. The optional UI assembly is `MLGWorks.RebindX.UI`; it contains `RebindActionUI` and its custom inspector and depends on TextMeshPro and Unity Localization. Projects that only need persistence and rebinding services can reference the core assembly without the UI integrations. The test assemblies are `MLGWorks.RebindX.Tests` (EditMode) and `MLGWorks.RebindX.PlayModeTests` (PlayMode).
 
