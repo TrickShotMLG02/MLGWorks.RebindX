@@ -12,6 +12,7 @@ namespace MLGWorks.RebindX.Runtime.Editors
         private SerializedProperty relativePathProp;
         private SerializedProperty customPathProp;
         private SerializedProperty customFileName;
+        private SerializedProperty actionAssetProp;
 
         private void OnEnable()
         {
@@ -19,6 +20,7 @@ namespace MLGWorks.RebindX.Runtime.Editors
             relativePathProp = serializedObject.FindProperty("relativePath");
             customPathProp = serializedObject.FindProperty("customPath");
             customFileName = serializedObject.FindProperty("fileName");
+            actionAssetProp = serializedObject.FindProperty("actionAsset");
         }
 
         public override void OnInspectorGUI()
@@ -38,6 +40,7 @@ namespace MLGWorks.RebindX.Runtime.Editors
                 EditorGUILayout.PropertyField(customPathProp, new GUIContent("Custom Path"));
             }
             EditorGUILayout.PropertyField(customFileName, new GUIContent("File Name"));
+            EditorGUILayout.PropertyField(actionAssetProp, new GUIContent("Input Action Asset"));
 
             EditorGUILayout.Space();
 
@@ -45,8 +48,18 @@ namespace MLGWorks.RebindX.Runtime.Editors
             if (GUILayout.Button("Open Rebind Folder"))
             {
                 var rebindManager = (RebindManager)target;
-                string dirPath = rebindManager.DirectoryPath;
-                string filePath = rebindManager.FilePath;
+                string dirPath;
+                string filePath;
+                try
+                {
+                    dirPath = rebindManager.DirectoryPath;
+                    filePath = rebindManager.FilePath;
+                }
+                catch (System.Exception exception)
+                {
+                    Debug.LogError(exception.Message);
+                    return;
+                }
                 if (!Directory.Exists(dirPath))
                 {
                     Directory.CreateDirectory(dirPath);

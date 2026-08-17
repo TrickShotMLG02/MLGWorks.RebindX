@@ -22,9 +22,12 @@ namespace MLGWorks.RebindX.Runtime
         [SerializeField] private string relativePath = "Configs";
         [SerializeField] private string customPath = "";
         [SerializeField] private string fileName = "rebinds.json";
+        [SerializeField] private InputActionAsset actionAsset;
 
         private PlayerInputControls _controls;
+        private InputActionAsset _actionAsset;
         public PlayerInputControls Controls => _controls;
+        public InputActionAsset ActionAsset => _actionAsset;
 
         public string DirectoryPath
         {
@@ -39,7 +42,12 @@ namespace MLGWorks.RebindX.Runtime
                         return Path.Combine(Application.dataPath, relativePath);
 
                     case FileLocationType.Custom:
-                        return Path.Combine(customPath);
+                        if (string.IsNullOrWhiteSpace(customPath))
+                        {
+                            throw new InvalidOperationException("A custom rebind path must be configured.");
+                        }
+
+                        return customPath;
 
                     default:
                         throw new ArgumentException("Invalid Path");
@@ -55,29 +63,105 @@ namespace MLGWorks.RebindX.Runtime
             }
         }
 
-        private void Awake()
+        protected override void Awake()
         {
-            _controls = new PlayerInputControls();
-            _controls.Enable();
+            base.Awake();
+
+            // The base singleton destroys duplicate objects. Do not initialize a
+            // duplicate's input asset before Unity removes it.
+            if (Instance != this)
+            {
+                return;
+            }
+
+            if (actionAsset != null)
+            {
+                _actionAsset = actionAsset;
+                _actionAsset.Enable();
+            }
+            else
+            {
+                _controls = new PlayerInputControls();
+                _actionAsset = _controls.asset;
+                _controls.Enable();
+            }
 
             LoadRebinds();
         }
 
         public void SetControls(PlayerInputControls controls)
         {
+            if (controls == null)
+            {
+                throw new ArgumentNullException(nameof(controls));
+            }
+
+            if (_controls == controls)
+            {
+                return;
+            }
+
+            if (_controls != null)
+            {
+                _controls.Disable();
+                _controls.Dispose();
+            }
+
             _controls = controls;
+            _actionAsset = controls.asset;
+            _controls.Enable();
+            LoadRebinds();
+        }
+
+        public void SetActionAsset(InputActionAsset asset)
+        {
+            if (asset == null)
+            {
+                throw new ArgumentNullException(nameof(asset));
+            }
+
+            if (_actionAsset == asset)
+            {
+                return;
+            }
+
+            if (_controls != null)
+            {
+                _controls.Disable();
+                _controls.Dispose();
+                _controls = null;
+            }
+            else
+            {
+                _actionAsset?.Disable();
+            }
+
+            _actionAsset = asset;
+            _actionAsset.Enable();
+            LoadRebinds();
         }
 
         public void SaveRebinds()
         {
-            string rebinds = _controls.asset.SaveBindingOverridesAsJson();
+            if (_actionAsset == null)
+            {
+                Debug.LogError("Cannot save rebinds before the input controls have been initialized.", this);
+                return;
+            }
+
+            string rebinds = _actionAsset.SaveBindingOverridesAsJson();
             try
             {
                 // Get directory from file path
                 string directoryPath = Path.GetDirectoryName(FilePath);
 
                 // Create directory if it doesn't exist
-                if (!System.IO.Directory.Exists(directoryPath))
+                if (string.IsNullOrEmpty(directoryPath))
+                {
+                    throw new InvalidOperationException("The rebind file path does not contain a directory.");
+                }
+
+                if (!Directory.Exists(directoryPath))
                 {
                     Directory.CreateDirectory(directoryPath);
                 }
@@ -105,7 +189,11 @@ namespace MLGWorks.RebindX.Runtime
 
         public void LoadRebinds()
         {
-            string directoryPath = Path.GetDirectoryName(FilePath);
+            if (_actionAsset == null)
+            {
+                Debug.LogError("Cannot load rebinds before the input controls have been initialized.", this);
+                return;
+            }
 
             try
             {
@@ -114,8 +202,8 @@ namespace MLGWorks.RebindX.Runtime
                 {
                     // Read the file content and return it
                     string fileContent = File.ReadAllText(FilePath);
-                    _controls.LoadBindingOverridesFromJson(fileContent);
-                    Console.WriteLine("Input Config File loaded successfully.");
+                    _actionAsset.LoadBindingOverridesFromJson(fileContent);
+                    Debug.Log("Input Config File loaded successfully.", this);
                 }
                 else
                 {

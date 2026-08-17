@@ -21,7 +21,6 @@ namespace MLGWorks.RebindX.Runtime.Editors
             m_ActionLabelProperty = serializedObject.FindProperty("m_ActionLabel");
             m_BindingTextProperty = serializedObject.FindProperty("m_BindingText");
             m_RebindOverlayProperty = serializedObject.FindProperty("m_RebindOverlay");
-            m_BlurManagerProperty = serializedObject.FindProperty("m_BlurManager");
             m_RebindTextProperty = serializedObject.FindProperty("m_RebindText");
             m_UpdateBindingUIEventProperty = serializedObject.FindProperty("m_UpdateBindingUIEvent");
             m_RebindStartEventProperty = serializedObject.FindProperty("m_RebindStartEvent");
@@ -66,8 +65,7 @@ namespace MLGWorks.RebindX.Runtime.Editors
             {
                 EditorGUILayout.PropertyField(m_ActionLabelProperty);
                 EditorGUILayout.PropertyField(m_BindingTextProperty);
-                //EditorGUILayout.PropertyField(m_RebindOverlayProperty);
-                //EditorGUILayout.PropertyField(m_BlurManagerProperty);
+                EditorGUILayout.PropertyField(m_RebindOverlayProperty);
                 EditorGUILayout.PropertyField(m_RebindTextProperty);
             }
 
@@ -176,7 +174,6 @@ namespace MLGWorks.RebindX.Runtime.Editors
         private SerializedProperty m_ActionLabelProperty;
         private SerializedProperty m_BindingTextProperty;
         private SerializedProperty m_RebindOverlayProperty;
-        private SerializedProperty m_BlurManagerProperty;
         private SerializedProperty m_RebindTextProperty;
         private SerializedProperty m_RebindStartEventProperty;
         private SerializedProperty m_RebindStopEventProperty;

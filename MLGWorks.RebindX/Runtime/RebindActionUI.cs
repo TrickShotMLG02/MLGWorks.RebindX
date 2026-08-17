@@ -240,7 +240,31 @@ namespace MLGWorks.RebindX.Runtime
                 var bindingIndex = action.bindings.IndexOf(x => x.id.ToString() == m_BindingId);
                 if (bindingIndex != -1)
                 {
-                    displayString = action.GetBindingDisplayString(bindingIndex, out deviceLayoutName, out controlPath, displayStringOptions);
+                    var binding = action.bindings[bindingIndex];
+                    if (binding.isComposite && m_CompositeOverrideBackup != null)
+                    {
+                        // Input System falls back to the default path when a
+                        // composite part has no override. During rebinding we
+                        // intentionally omit those defaults from the display.
+                        var boundParts = new List<string>();
+                        for (var i = bindingIndex + 1;
+                             i < action.bindings.Count && action.bindings[i].isPartOfComposite;
+                             ++i)
+                        {
+                            var part = action.bindings[i];
+                            if (!string.IsNullOrEmpty(part.overridePath))
+                            {
+                                var partDisplay = action.GetBindingDisplayString(i, displayStringOptions);
+                                boundParts.Add($"{part.name}: {partDisplay}");
+                            }
+                        }
+
+                        displayString = string.Join(", ", boundParts);
+                    }
+                    else
+                    {
+                        displayString = action.GetBindingDisplayString(bindingIndex, out deviceLayoutName, out controlPath, displayStringOptions);
+                    }
                 }
             }
 
@@ -280,28 +304,17 @@ namespace MLGWorks.RebindX.Runtime
 
         private void ResetBinding(InputAction action, int bindingIndex)
         {
-            // grab the binding to be reset
-            InputBinding newBinding = action.bindings[bindingIndex];
-            string oldOverridePath = newBinding.overridePath;
-
-            // reset the binding
             action.RemoveBindingOverride(bindingIndex);
 
-            // check if the binding is used in other actions and reset them as well
-            foreach (InputAction otherAction in action.actionMap.actions)
+            // Composite overrides are stored on their parts, not on the
+            // composite header.
+            if (action.bindings[bindingIndex].isComposite)
             {
-                if (otherAction == action)
+                for (var i = bindingIndex + 1;
+                     i < action.bindings.Count && action.bindings[i].isPartOfComposite;
+                     ++i)
                 {
-                    continue;
-                }
-
-                for (int i = 0; i < otherAction.bindings.Count; i++)
-                {
-                    InputBinding binding = otherAction.bindings[i];
-                    if (binding.overridePath == newBinding.path)
-                    {
-                        otherAction.ApplyBindingOverride(i, oldOverridePath);
-                    }
+                    action.RemoveBindingOverride(i);
                 }
             }
         }
@@ -323,6 +336,7 @@ namespace MLGWorks.RebindX.Runtime
                 var firstPartIndex = bindingIndex + 1;
                 if (firstPartIndex < action.bindings.Count && action.bindings[firstPartIndex].isPartOfComposite)
                 {
+                    BeginCompositeRebind(action, bindingIndex);
                     PerformInteractiveRebind(action, firstPartIndex, allCompositeParts: true);
                 }
             }
@@ -334,18 +348,21 @@ namespace MLGWorks.RebindX.Runtime
 
         public void CancelInteractiveRebind()
         {
-            m_RebindOperation.Cancel();
+            m_RebindOperation?.Cancel();
         }
 
         private void PerformInteractiveRebind(InputAction action, int bindingIndex, bool allCompositeParts = false)
         {
             m_RebindOperation?.Cancel(); // Will null out m_RebindOperation.
 
+            var actionWasEnabled = action.enabled;
+
             void CleanUp()
             {
                 m_RebindOperation?.Dispose();
                 m_RebindOperation = null;
-                action.Enable();
+                if (actionWasEnabled)
+                    action.Enable();
             }
 
             //Fixes the "InvalidOperationException: Cannot rebind action x while it is enabled" error
@@ -360,6 +377,7 @@ namespace MLGWorks.RebindX.Runtime
                     operation =>
                     {
                         m_RebindStopEvent?.Invoke(this, operation);
+                        RestoreCompositeOverrides(action);
                         //// TODO: Implement rebind overlay and blur manager
                         /*
                         if (m_RebindOverlay != null)
@@ -369,6 +387,7 @@ namespace MLGWorks.RebindX.Runtime
                         }
                         */
                         UpdateBindingDisplay();
+                        SetRebindOverlayVisible(false);
                         CleanUp();
                     })
                 .OnComplete(
@@ -407,15 +426,20 @@ namespace MLGWorks.RebindX.Runtime
                                 RebindManager.Instance.SwitchToUI();
 
                                 // save rebinds to file only if all parts are done
-                                RebindManager.Instance.SaveRebinds();
-                                m_RebindText.text = string.Empty; // Clear the rebind text after completion
+                                SaveRebinds();
+                                if (m_RebindText != null)
+                                    m_RebindText.text = string.Empty; // Clear the rebind text after completion
                             }
                             */
                             else
                             {
                                 // save rebinds to file only if all parts are done
-                                RebindManager.Instance.SaveRebinds();
-                                m_RebindText.text = string.Empty; // Clear the rebind text after completion
+                                SaveRebinds();
+                                if (m_RebindText != null)
+                                    m_RebindText.text = string.Empty; // Clear the rebind text after completion
+                                SetRebindOverlayVisible(false);
+                                m_CompositeOverrideBackup = null;
+                                UpdateBindingDisplay();
                             }
                         }
                         //// TODO: Implement rebind overlay and blur manager
@@ -428,15 +452,20 @@ namespace MLGWorks.RebindX.Runtime
                             RebindManager.Instance.SwitchToUI();
 
                             // save rebinds to file only if all parts are done
-                            RebindManager.Instance.SaveRebinds();
-                            m_RebindText.text = string.Empty; // Clear the rebind text after completion
+                            SaveRebinds();
+                            if (m_RebindText != null)
+                                m_RebindText.text = string.Empty; // Clear the rebind text after completion
                         }
                         */
                         else
                         {
                             // save rebinds to file only if all parts are done
-                            RebindManager.Instance.SaveRebinds();
-                            m_RebindText.text = string.Empty; // Clear the rebind text after completion
+                            SaveRebinds();
+                            if (m_RebindText != null)
+                                m_RebindText.text = string.Empty; // Clear the rebind text after completion
+                            SetRebindOverlayVisible(false);
+                            m_CompositeOverrideBackup = null;
+                            UpdateBindingDisplay();
                         }
                     }
                 );
@@ -448,13 +477,7 @@ namespace MLGWorks.RebindX.Runtime
                 partName = $"Binding '{action.bindings[bindingIndex].name}'. ";
             }
 
-            //// TODO: Implement blurmanager and rebind overlay
-            /*
-            // Bring up rebind overlay, if we have one.
-            m_RebindOverlay.ModalWindowIn();
-            m_BlurManager.BlurInAnim();
-            InputManager.Instance.SwitchToUIModalWindow();
-            */
+            SetRebindOverlayVisible(true);
 
             if (m_RebindText != null)
             {
@@ -462,20 +485,24 @@ namespace MLGWorks.RebindX.Runtime
                     ? $"{partName}Waiting for {m_RebindOperation.expectedControlType} input..."
                     : $"{partName}Waiting for input...";
 
-                // set the localized string identifier and variables for overlay title
-                //m_RebindText.transform.parent.Find("Title").GetComponent<LocalizationTokenConverter>().SetLocalizedString(m_titleLocalization);
+                // Resolve the optional localized prompt. An unconfigured
+                // LocalizedString must not produce lookup errors.
+                try
+                {
+                    var table = m_descriptionLocalization.TableReference.TableCollectionName;
+                    var key = m_descriptionLocalization.TableEntryReference.Key;
+                    if (!string.IsNullOrEmpty(table) && !string.IsNullOrEmpty(key))
+                    {
+                        var localizedPrompt = m_descriptionLocalization.GetLocalizedString();
+                        if (!string.IsNullOrEmpty(localizedPrompt))
+                            text = localizedPrompt;
+                    }
+                }
+                catch (Exception exception)
+                {
+                    Debug.LogWarning($"Could not resolve the rebind prompt localization: {exception.Message}", this);
+                }
 
-                // set the localized binding name and input type for overlay description as variable
-                string table = m_titleLocalization.TableReference.TableCollectionName;
-                string localized_action = (m_Action) ? GetLocalizationString(table, ConvertActionToIdentifier(m_Action)) : "";
-                string localized_binding = GetLocalizationString(table, ConvertBindingToIdentifier(m_Action, action.bindings[bindingIndex]));
-                string localized_binding_type = GetLocalizationString(table, "controltype_" + m_RebindOperation.expectedControlType.ToLower());
-                m_descriptionLocalization.Add("binding_name", new StringVariable { Value = localized_binding });
-                m_descriptionLocalization.Add("input_type", new StringVariable { Value = localized_binding_type });
-
-                // set the localized string identifier and variables for overlay description
-                //m_RebindText.gameObject.GetComponent<LocalizationTokenConverter>().SetLocalizedString(m_descriptionLocalization);
-                // use localization instead
                 m_RebindText.text = text;
             }
 
@@ -493,6 +520,45 @@ namespace MLGWorks.RebindX.Runtime
             m_RebindStartEvent?.Invoke(this, m_RebindOperation);
 
             m_RebindOperation.Start();
+        }
+
+        private void SetRebindOverlayVisible(bool visible)
+        {
+            if (m_RebindOverlay != null)
+                m_RebindOverlay.SetActive(visible);
+        }
+
+        private void BeginCompositeRebind(InputAction action, int compositeIndex)
+        {
+            m_CompositeOverrideBackup = new Dictionary<int, string>();
+
+            for (var i = compositeIndex + 1;
+                 i < action.bindings.Count && action.bindings[i].isPartOfComposite;
+                 ++i)
+            {
+                m_CompositeOverrideBackup[i] = action.bindings[i].overridePath;
+                action.RemoveBindingOverride(i);
+            }
+
+            // The display now contains no stale composite overrides. As each
+            // part is rebound, only the freshly captured parts will appear.
+            UpdateBindingDisplay();
+        }
+
+        private void RestoreCompositeOverrides(InputAction action)
+        {
+            if (m_CompositeOverrideBackup == null)
+                return;
+
+            foreach (var backup in m_CompositeOverrideBackup)
+            {
+                if (string.IsNullOrEmpty(backup.Value))
+                    action.RemoveBindingOverride(backup.Key);
+                else
+                    action.ApplyBindingOverride(backup.Key, backup.Value);
+            }
+
+            m_CompositeOverrideBackup = null;
         }
 
         private bool CheckDuplicateBinding(InputAction action, int bindingIndex, bool allCompositeParts = false)
@@ -515,17 +581,33 @@ namespace MLGWorks.RebindX.Runtime
 
             if (allCompositeParts)
             {
-                for (int i = 1; i < bindingIndex; i++)
+                // Only compare against parts of this composite. The previous
+                // implementation started at index 1, which could compare
+                // unrelated bindings and miss the actual composite boundary.
+                var compositeStart = bindingIndex - 1;
+                while (compositeStart >= 0 && !action.bindings[compositeStart].isComposite)
+                    compositeStart--;
+
+                for (var i = compositeStart + 1; i < bindingIndex; i++)
                 {
-                    if (action.bindings[i].effectivePath == newBinding.overridePath)
+                    var previousPart = action.bindings[i];
+                    if (previousPart.isPartOfComposite &&
+                        !string.IsNullOrEmpty(previousPart.effectivePath) &&
+                        previousPart.effectivePath == newBinding.effectivePath)
                     {
-                        Debug.Log("Duplicate binding found for : " + action.ToString() + " and " + newBinding.action.ToString() + " at " + newBinding.effectivePath);
+                        Debug.Log("Duplicate composite binding found at " + newBinding.effectivePath);
                         return true;
                     }
                 }
             }
 
             return false;
+        }
+
+        private void SaveRebinds()
+        {
+            var manager = FindFirstObjectByType<RebindManager>();
+            manager?.SaveRebinds();
         }
 
         private string ConvertActionToIdentifier(InputActionReference action)
@@ -556,7 +638,7 @@ namespace MLGWorks.RebindX.Runtime
                 StringTable strTable = LocalizationSettings.StringDatabase.GetTable(table);
                 return strTable.GetEntry(identifier).GetLocalizedString();
             }
-            catch (Exception e)
+            catch (Exception)
             {
                 Debug.LogError($"String table {table} not found/initialized yet or identifier {identifier} not found.");
                 return "";
@@ -565,33 +647,37 @@ namespace MLGWorks.RebindX.Runtime
 
         protected void OnEnable()
         {
-            // replace input action reference with same action from generated c# class
-            if (RebindManager.Instance && m_Action)
+            SetRebindOverlayVisible(false);
+
+            // Replace the serialized reference with the manager's live action
+            // while preserving its action map.
+            var manager = FindFirstObjectByType<RebindManager>();
+            if (manager != null && m_Action != null && m_Action.action != null)
             {
-                m_Action = InputActionReference.Create(RebindManager.Instance.Controls.FindAction(m_Action.name));
+                var actionName = m_Action.action.actionMap != null
+                    ? $"{m_Action.action.actionMap.name}/{m_Action.action.name}"
+                    : m_Action.action.name;
+                var managedAction = manager.ActionAsset?.FindAction(actionName, throwIfNotFound: false);
+                if (managedAction != null)
+                    m_Action = InputActionReference.Create(managedAction);
             }
 
-            // Add current action name as variableName and the localized action name as variableValue
-            // get localized name for current action
-            string table = m_titleLocalization.TableReference.TableCollectionName;
-
-            string localized_action = (m_Action) ? GetLocalizationString(table, ConvertActionToIdentifier(m_Action)) : "";
-
-            if (localized_action != "")
+            if (m_Action != null && m_Action.action != null && m_ActionLabel != null)
             {
-                m_titleLocalization.Add("action_name", new StringVariable { Value = localized_action });
-
-                // add all bindings of the action to the localization table with the binding name
-                //m_descriptionLocalization.Add("variableName", new StringVariable { Value = "VariableValue" });
-
-                foreach (InputBinding binding in m_Action.action.bindings)
+                try
                 {
-                    //string localized_binding = GetLocalizationString(table, ConvertBindingToIdentifier(m_Action, binding));
-                    //m_descriptionLocalization.Add(binding.name, new StringVariable { Value = localized_binding });
+                    var table = m_titleLocalization.TableReference.TableCollectionName;
+                    if (!string.IsNullOrEmpty(table))
+                    {
+                        var localizedAction = GetLocalizationString(table, ConvertActionToIdentifier(m_Action));
+                        if (!string.IsNullOrEmpty(localizedAction))
+                            m_ActionLabel.text = localizedAction;
+                    }
                 }
-
-                // set localized display string to action label
-                m_ActionLabel.text = GetLocalizationString(table, ConvertActionToIdentifier(m_Action));
+                catch (Exception exception)
+                {
+                    Debug.LogWarning($"Could not resolve the action localization: {exception.Message}", this);
+                }
             }
 
             if (s_RebindActionUIs == null)
@@ -610,8 +696,13 @@ namespace MLGWorks.RebindX.Runtime
 
         protected void OnDisable()
         {
+            m_RebindOperation?.Cancel();
             m_RebindOperation?.Dispose();
             m_RebindOperation = null;
+            SetRebindOverlayVisible(false);
+
+            if (s_RebindActionUIs == null)
+                return;
 
             s_RebindActionUIs.Remove(this);
             if (s_RebindActionUIs.Count == 0)
@@ -627,7 +718,7 @@ namespace MLGWorks.RebindX.Runtime
         // will update our UI to reflect the current keyboard layout.
         private static void OnActionChange(object obj, InputActionChange change)
         {
-            if (change != InputActionChange.BoundControlsChanged)
+            if (change != InputActionChange.BoundControlsChanged || s_RebindActionUIs == null)
             {
                 return;
             }
@@ -673,16 +764,9 @@ namespace MLGWorks.RebindX.Runtime
         [SerializeField]
         private TMPro.TextMeshProUGUI m_BindingText;
 
-        //// TODO: Implement rebind overlay and blur manager
-        /*
-        [Tooltip("Modal Window that will be shown while a rebind is in progress.")]
+        [Tooltip("Optional overlay GameObject that is shown while a rebind is in progress.")]
         [SerializeField]
-        private ModalWindowManager m_RebindOverlay;
-
-        [Tooltip("Blur Manager that is activated when showing rebind overlay.")]
-        [SerializeField]
-        private BlurManager m_BlurManager;
-        */
+        private GameObject m_RebindOverlay;
 
         [Tooltip("Optional text label that will be updated with prompt for user input.")]
         [SerializeField]
@@ -703,7 +787,8 @@ namespace MLGWorks.RebindX.Runtime
         [SerializeField]
         private InteractiveRebindEvent m_RebindStopEvent;
 
-        public static InputActionRebindingExtensions.RebindingOperation m_RebindOperation;
+        private InputActionRebindingExtensions.RebindingOperation m_RebindOperation;
+        private Dictionary<int, string> m_CompositeOverrideBackup;
 
         private static List<RebindActionUI> s_RebindActionUIs;
 
