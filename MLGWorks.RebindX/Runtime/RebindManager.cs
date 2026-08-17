@@ -22,6 +22,8 @@ namespace MLGWorks.RebindX.Runtime
         [SerializeField] private string relativePath = "Configs";
         [SerializeField] private string customPath = "";
         [SerializeField] private string fileName = "rebinds.json";
+        [Tooltip("Optional stable identifier for this input profile. If empty, an identifier is generated from the asset structure.")]
+        [SerializeField] private string profileId = "";
         [SerializeField] private InputActionAsset actionAsset;
 
         private PlayerInputControls _controls;
@@ -46,7 +48,7 @@ namespace MLGWorks.RebindX.Runtime
 
         public IBindingOverrideStore OverrideStore
         {
-            get => m_OverrideStore ??= new JsonBindingOverrideStore(PathProvider);
+            get => m_OverrideStore ??= new JsonBindingOverrideStore(PathProvider, profileId);
             set => m_OverrideStore = value ?? throw new ArgumentNullException(nameof(value));
         }
 
@@ -140,49 +142,69 @@ namespace MLGWorks.RebindX.Runtime
             LoadRebinds();
         }
 
-        public void SaveRebinds()
+        public BindingOverrideResult SaveRebinds()
         {
             if (_actionAsset == null)
             {
                 Debug.LogError("Cannot save rebinds before the input controls have been initialized.", this);
-                return;
+                return BindingOverrideResult.Failure(BindingOverrideResultCode.InvalidAsset, "The input action asset has not been initialized.");
             }
 
             try
             {
-                OverrideStore.Save(_actionAsset);
-                Debug.Log("Input Config File saved to " + FilePath);
+                var result = OverrideStore.Save(_actionAsset);
+                if (result.Succeeded)
+                    Debug.Log("Input Config File saved to " + FilePath);
+                else
+                    Debug.LogError("Failed to save Input Config File: " + result.Message);
+                return result;
             }
             catch (Exception e)
             {
                 Debug.LogError("Failed to save Input Config File: " + e.Message);
+                return BindingOverrideResult.Failure(BindingOverrideResultCode.IoFailure, e.Message, e);
             }
         }
 
-        public void LoadRebinds()
+        public BindingOverrideResult LoadRebinds()
         {
             if (_actionAsset == null)
             {
                 Debug.LogError("Cannot load rebinds before the input controls have been initialized.", this);
-                return;
+                return BindingOverrideResult.Failure(BindingOverrideResultCode.InvalidAsset, "The input action asset has not been initialized.");
             }
 
             try
             {
-                if (File.Exists(FilePath))
-                {
-                    OverrideStore.Load(_actionAsset);
-                    Debug.Log("Input Config File loaded successfully.", this);
-                }
-                else
-                {
+                var result = OverrideStore.Load(_actionAsset);
+                if (result.Code == BindingOverrideResultCode.NoData)
                     Debug.LogWarning("Input Config File not found. " + FilePath);
-                }
+                else if (result.Succeeded)
+                    Debug.Log("Input Config File loaded successfully.", this);
+                else
+                    Debug.LogError("Failed to load Input Config File: " + result.Message);
+                return result;
             }
             catch (Exception ex)
             {
                 Debug.LogError($"Failed to load Input Config File: {ex.Message}");
+                return BindingOverrideResult.Failure(BindingOverrideResultCode.IoFailure, ex.Message, ex);
             }
+        }
+
+        public BindingOverrideResult ResetRebinds()
+        {
+            if (_actionAsset == null)
+            {
+                Debug.LogError("Cannot reset rebinds before the input controls have been initialized.", this);
+                return BindingOverrideResult.Failure(BindingOverrideResultCode.InvalidAsset, "The input action asset has not been initialized.");
+            }
+
+            _actionAsset.RemoveAllBindingOverrides();
+            var result = OverrideStore.Delete();
+            if (!result.Succeeded)
+                Debug.LogError("Failed to reset Input Config File: " + result.Message);
+            return result;
         }
     }
 }

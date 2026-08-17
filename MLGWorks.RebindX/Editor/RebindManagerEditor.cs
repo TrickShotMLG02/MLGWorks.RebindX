@@ -12,6 +12,7 @@ namespace MLGWorks.RebindX.Runtime.Editors
         private SerializedProperty relativePathProp;
         private SerializedProperty customPathProp;
         private SerializedProperty customFileName;
+        private SerializedProperty profileIdProp;
         private SerializedProperty actionAssetProp;
 
         private void OnEnable()
@@ -20,6 +21,7 @@ namespace MLGWorks.RebindX.Runtime.Editors
             relativePathProp = serializedObject.FindProperty("relativePath");
             customPathProp = serializedObject.FindProperty("customPath");
             customFileName = serializedObject.FindProperty("fileName");
+            profileIdProp = serializedObject.FindProperty("profileId");
             actionAssetProp = serializedObject.FindProperty("actionAsset");
         }
 
@@ -40,6 +42,7 @@ namespace MLGWorks.RebindX.Runtime.Editors
                 EditorGUILayout.PropertyField(customPathProp, new GUIContent("Custom Path"));
             }
             EditorGUILayout.PropertyField(customFileName, new GUIContent("File Name"));
+            EditorGUILayout.PropertyField(profileIdProp, new GUIContent("Profile Id"));
             EditorGUILayout.PropertyField(actionAssetProp, new GUIContent("Input Action Asset"));
 
             EditorGUILayout.Space();

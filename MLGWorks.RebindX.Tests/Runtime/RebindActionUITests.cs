@@ -17,8 +17,19 @@ namespace MLGWorks.RebindX.Tests
             public int SaveCount { get; private set; }
             public int LoadCount { get; private set; }
 
-            public void SaveRebinds() => SaveCount++;
-            public void LoadRebinds() => LoadCount++;
+            public BindingOverrideResult SaveRebinds()
+            {
+                SaveCount++;
+                return BindingOverrideResult.Success();
+            }
+
+            public BindingOverrideResult LoadRebinds()
+            {
+                LoadCount++;
+                return BindingOverrideResult.Success();
+            }
+
+            public BindingOverrideResult ResetRebinds() => BindingOverrideResult.Success();
         }
 
         private InputActionAsset m_Asset;

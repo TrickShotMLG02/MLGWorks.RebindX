@@ -24,7 +24,7 @@ The manager's existing Inspector configuration and methods remain compatible. Ad
 RebindManager.Instance.OverrideStore = new InMemoryBindingOverrideStore();
 ```
 
-For a production backend such as cloud saves, implement `IBindingOverrideStore` and assign it before calling `SaveRebinds` or `LoadRebinds`. The store receives the active `InputActionAsset`; it does not own the asset or the manager lifetime.
+For a production backend such as cloud saves, implement `IBindingOverrideStore` and assign it before calling `SaveRebinds` or `LoadRebinds`. Store operations return a `BindingOverrideResult` with a `Code`, `Message`, and `Succeeded` flag. The store receives the active `InputActionAsset`; it does not own the asset or the manager lifetime.
 
 ## Requirements
 
@@ -70,7 +70,9 @@ The manager exposes three file location modes:
 
 The default file is `rebinds.json` under a `Configs` directory in the persistent data path. The manager creates the directory when saving.
 
-The saved file contains Unity Input System binding overrides. Delete the file to restore all bindings to their defaults on the next load.
+The saved file is a versioned envelope containing Unity Input System binding overrides and an asset/profile identity. Set **Profile Id** when multiple input profiles share a save location; otherwise RebindX generates an identity from the asset structure. Overrides from another profile or asset are rejected without changing the active asset.
+
+Writes use a temporary file and replacement. Malformed or legacy unversioned files are moved to a timestamped `.corrupt-*.json` file and reported as `BindingOverrideResultCode.CorruptData`, so player settings can be recovered without silently applying unsafe data. Unsupported future versions are reported without being deleted.
 
 ## Creating a rebind row
 
@@ -171,9 +173,10 @@ The manager also exposes:
 var manager = RebindManager.Instance;
 manager.SaveRebinds();
 manager.LoadRebinds();
+manager.ResetRebinds();
 ```
 
-Saving is normally performed automatically after a successful `RebindActionUI` operation. Explicit calls are useful for a dedicated **Apply** button or when binding overrides are changed directly through the Input System API.
+Saving is normally performed automatically after a successful `RebindActionUI` operation. Explicit calls are useful for a dedicated **Apply** button or when binding overrides are changed directly through the Input System API. Check the returned `BindingOverrideResult` when the application needs to surface persistence failures. `ResetRebinds()` removes all active overrides and deletes the persisted file.
 
 ## Using a different action asset at runtime
 

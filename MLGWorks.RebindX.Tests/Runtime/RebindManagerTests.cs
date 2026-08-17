@@ -1,5 +1,6 @@
 using System.IO;
 using System.Reflection;
+using System.Text.RegularExpressions;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.InputSystem;
@@ -138,8 +139,11 @@ namespace MLGWorks.RebindX.Tests
             Directory.CreateDirectory(m_Manager.DirectoryPath);
             File.WriteAllText(m_Manager.FilePath, "not valid json");
 
-            LogAssert.Expect(LogType.Error, "Failed to load Input Config File: JSON parse error: Invalid value.");
-            Assert.DoesNotThrow(() => m_Manager.LoadRebinds());
+            LogAssert.Expect(LogType.Error, new Regex("Failed to load Input Config File:.*"));
+            var result = m_Manager.LoadRebinds();
+
+            Assert.That(result.Code, Is.EqualTo(BindingOverrideResultCode.CorruptData));
+            Assert.That(File.Exists(m_Manager.FilePath), Is.False);
         }
 
         [Test]
@@ -155,6 +159,56 @@ namespace MLGWorks.RebindX.Tests
             Assert.That(m_Asset.enabled, Is.False);
 
             Object.DestroyImmediate(replacement);
+        }
+
+        [Test]
+        public void SaveRebinds_ReturnsSuccessResult()
+        {
+            var result = m_Manager.SaveRebinds();
+
+            Assert.That(result.Succeeded, Is.True);
+            Assert.That(result.Code, Is.EqualTo(BindingOverrideResultCode.Success));
+        }
+
+        [Test]
+        public void LoadRebinds_ReturnsNoDataWhenFileIsMissing()
+        {
+            var result = m_Manager.LoadRebinds();
+
+            Assert.That(result.Code, Is.EqualTo(BindingOverrideResultCode.NoData));
+            Assert.That(result.Succeeded, Is.True);
+        }
+
+        [Test]
+        public void ResetRebinds_RemovesOverridesAndPersistedFile()
+        {
+            var action = m_Asset.FindAction("Gameplay/Jump");
+            action.ApplyBindingOverride(0, "<Keyboard>/enter");
+            m_Manager.SaveRebinds();
+
+            var result = m_Manager.ResetRebinds();
+
+            Assert.That(result.Succeeded, Is.True);
+            Assert.That(action.bindings[0].overridePath, Is.Null.Or.Empty);
+            Assert.That(File.Exists(m_Manager.FilePath), Is.False);
+        }
+
+        [Test]
+        public void ProfileId_IsolatesTwoManagersUsingTheSameFile()
+        {
+            SetPrivateField("profileId", "profile-a");
+            var action = m_Asset.FindAction("Gameplay/Jump");
+            action.ApplyBindingOverride(0, "<Keyboard>/enter");
+            m_Manager.SaveRebinds();
+
+            SetPrivateField("profileId", "profile-b");
+            m_Manager.OverrideStore = new JsonBindingOverrideStore(m_Manager.PathProvider, "profile-b");
+            action.RemoveBindingOverride(0);
+            LogAssert.Expect(LogType.Error, new Regex("Failed to load Input Config File: Binding overrides belong.*"));
+            var result = m_Manager.LoadRebinds();
+
+            Assert.That(result.Code, Is.EqualTo(BindingOverrideResultCode.AssetMismatch));
+            Assert.That(action.bindings[0].overridePath, Is.Null.Or.Empty);
         }
 
         [Test]

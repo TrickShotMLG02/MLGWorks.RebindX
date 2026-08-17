@@ -201,6 +201,144 @@ namespace MLGWorks.RebindX.Tests
         }
 
         [Test]
+        public void InMemoryStore_DeleteClearsOverrides()
+        {
+            var asset = CreateAsset();
+            var store = new InMemoryBindingOverrideStore();
+            asset.FindAction("Gameplay/Jump").ApplyBindingOverride(0, "<Keyboard>/enter");
+            store.Save(asset);
+            store.Delete();
+            asset.FindAction("Gameplay/Jump").RemoveBindingOverride(0);
+
+            var result = store.Load(asset);
+
+            Assert.That(result.Code, Is.EqualTo(BindingOverrideResultCode.NoData));
+            Assert.That(asset.FindAction("Gameplay/Jump").bindings[0].overridePath, Is.Null.Or.Empty);
+        }
+
+        [Test]
+        public void JsonStore_WritesVersionAndAssetIdentityEnvelope()
+        {
+            var asset = CreateAsset();
+            var directory = Path.Combine(Application.temporaryCachePath, "RebindXInfrastructure");
+            var provider = new FileSystemRebindPathProvider(FileLocationType.Custom, "", directory, "versioned.json");
+            var store = new JsonBindingOverrideStore(provider, "keyboard-profile");
+
+            var result = store.Save(asset);
+            var json = File.ReadAllText(provider.FilePath);
+
+            Assert.That(result.Code, Is.EqualTo(BindingOverrideResultCode.Success));
+            Assert.That(json, Does.Contain("\"version\": " + JsonBindingOverrideStore.CurrentVersion));
+            Assert.That(json, Does.Contain("\"assetId\": \"profile:keyboard-profile\""));
+            Assert.That(json, Does.Contain("\"overrides\": "));
+            File.Delete(provider.FilePath);
+            Directory.Delete(directory, true);
+        }
+
+        [Test]
+        public void JsonStore_RejectsOverridesFromDifferentProfile()
+        {
+            var asset = CreateAsset();
+            var directory = Path.Combine(Application.temporaryCachePath, "RebindXInfrastructure");
+            var provider = new FileSystemRebindPathProvider(FileLocationType.Custom, "", directory, "profile.json");
+            new JsonBindingOverrideStore(provider, "profile-a").Save(asset);
+
+            var result = new JsonBindingOverrideStore(provider, "profile-b").Load(asset);
+
+            Assert.That(result.Code, Is.EqualTo(BindingOverrideResultCode.AssetMismatch), result.Message);
+            File.Delete(provider.FilePath);
+            Directory.Delete(directory, true);
+        }
+
+        [Test]
+        public void JsonStore_RejectsOverridesFromDifferentAssetStructure()
+        {
+            var source = CreateAsset();
+            var target = CreateAsset();
+            target.FindAction("Gameplay/Jump").ApplyBindingOverride(0, "<Gamepad>/buttonSouth");
+            var directory = Path.Combine(Application.temporaryCachePath, "RebindXInfrastructure");
+            var provider = new FileSystemRebindPathProvider(FileLocationType.Custom, "", directory, "asset.json");
+            var store = new JsonBindingOverrideStore(provider);
+            store.Save(source);
+
+            var result = store.Load(target);
+
+            Assert.That(result.Code, Is.EqualTo(BindingOverrideResultCode.AssetMismatch), result.Message);
+            Assert.That(target.FindAction("Gameplay/Jump").bindings[0].overridePath, Is.EqualTo("<Gamepad>/buttonSouth"));
+            File.Delete(provider.FilePath);
+            Directory.Delete(directory, true);
+        }
+
+        [Test]
+        public void JsonStore_QuarantinesMalformedJson()
+        {
+            var asset = CreateAsset();
+            var directory = Path.Combine(Application.temporaryCachePath, "RebindXInfrastructure");
+            var provider = new FileSystemRebindPathProvider(FileLocationType.Custom, "", directory, "corrupt.json");
+            Directory.CreateDirectory(directory);
+            File.WriteAllText(provider.FilePath, "not valid json");
+
+            var result = new JsonBindingOverrideStore(provider).Load(asset);
+
+            Assert.That(result.Code, Is.EqualTo(BindingOverrideResultCode.CorruptData));
+            Assert.That(File.Exists(provider.FilePath), Is.False);
+            Assert.That(Directory.GetFiles(directory, "corrupt.json.corrupt-*.json").Length, Is.EqualTo(1));
+            Directory.Delete(directory, true);
+        }
+
+        [Test]
+        public void JsonStore_QuarantinesUnversionedLegacyJson()
+        {
+            var asset = CreateAsset();
+            var directory = Path.Combine(Application.temporaryCachePath, "RebindXInfrastructure");
+            var provider = new FileSystemRebindPathProvider(FileLocationType.Custom, "", directory, "legacy.json");
+            Directory.CreateDirectory(directory);
+            File.WriteAllText(provider.FilePath, "[]");
+
+            var result = new JsonBindingOverrideStore(provider).Load(asset);
+
+            Assert.That(result.Code, Is.EqualTo(BindingOverrideResultCode.CorruptData));
+            Assert.That(File.Exists(provider.FilePath), Is.False);
+            Directory.Delete(directory, true);
+        }
+
+        [Test]
+        public void JsonStore_ReportsUnsupportedVersionWithoutQuarantiningFile()
+        {
+            var asset = CreateAsset();
+            var directory = Path.Combine(Application.temporaryCachePath, "RebindXInfrastructure");
+            var provider = new FileSystemRebindPathProvider(FileLocationType.Custom, "", directory, "future.json");
+            Directory.CreateDirectory(directory);
+            File.WriteAllText(provider.FilePath,
+                "{\"version\":" + (JsonBindingOverrideStore.CurrentVersion + 1) +
+                ",\"assetId\":\"" + JsonBindingOverrideStore.GetAssetId(asset) +
+                "\",\"overrides\":\"[]\"}");
+
+            var result = new JsonBindingOverrideStore(provider).Load(asset);
+
+            Assert.That(result.Code, Is.EqualTo(BindingOverrideResultCode.UnsupportedVersion));
+            Assert.That(File.Exists(provider.FilePath), Is.True);
+            File.Delete(provider.FilePath);
+            Directory.Delete(directory, true);
+        }
+
+        [Test]
+        public void JsonStore_DeleteRemovesPersistedFile()
+        {
+            var asset = CreateAsset();
+            var directory = Path.Combine(Application.temporaryCachePath, "RebindXInfrastructure");
+            var provider = new FileSystemRebindPathProvider(FileLocationType.Custom, "", directory, "delete.json");
+            var store = new JsonBindingOverrideStore(provider);
+            store.Save(asset);
+
+            var result = store.Delete();
+
+            Assert.That(result.Succeeded, Is.True);
+            Assert.That(File.Exists(provider.FilePath), Is.False);
+            Directory.Delete(directory, true);
+        }
+
+        [Test]
         public void InputActionAssetProvider_RejectsNullAsset()
         {
             Assert.Throws<System.ArgumentNullException>(() => new InputActionAssetProvider(null));
