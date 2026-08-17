@@ -2,6 +2,7 @@ using MLGWorks.Utils.Patterns;
 using Newtonsoft.Json;
 using System;
 using System.IO;
+using MLGWorks.Utils.Patterns.Singletons;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
