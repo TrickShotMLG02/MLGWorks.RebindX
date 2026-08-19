@@ -1,6 +1,6 @@
 {
   "name": "com.mlgworks.rebindx",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "displayName": "MLGWorks RebindX",
   "description": "Runtime rebinding, binding profiles, conflict resolution, persistence, and device-aware UI for Unity's Input System.",
   "unity": "2022.3",
@@ -18,6 +18,13 @@
     "rebind",
     "controls",
     "settings"
+  ],
+  "samples": [
+    {
+      "displayName": "RebindX Demo",
+      "description": "A small example scene showing the RebindX workflow.",
+      "path": "Samples~/RebindX Demo"
+    }
   ],
   "dependencies": {
     "com.unity.inputsystem": "1.7.0",

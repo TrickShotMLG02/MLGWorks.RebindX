@@ -40,6 +40,17 @@ https://github.com/TrickShotMLG02/RebindX.git?path=/Assets/MLGWorks.RebindX
 
 For a local checkout, choose **Add package from disk** and select this folder's `package.json`. The package ID is `com.mlgworks.rebindx`; see [package.json](package.json) for dependencies and version metadata.
 
+### Import the demo sample
+
+After installing RebindX:
+
+1. Open **Window > Package Manager**.
+2. Select **MLGWorks RebindX**.
+3. Open the **Samples** section.
+4. Click **Import** next to **RebindX Demo**.
+
+Unity copies the sample into your project's `Assets/Samples/MLGWorks RebindX/` folder, where you can open and modify it without changing the package.
+
 ### 1. Create an Input Actions asset
 
 Create or open an Input Actions asset and define maps, actions, bindings, control schemes, and composites as usual:
@@ -100,10 +111,11 @@ MLGWorks.RebindX/
 ├── package.json                         UPM metadata
 ├── MLGWorks.RebindX/Runtime/            Core runtime services
 ├── MLGWorks.RebindX/Resources/          Optional generated controls wrapper
+├── Samples~/                            UPM-importable demo sample
 ├── MLGWorks.RebindX.UI/                 Optional UI and custom Inspector
 ├── MLGWorks.RebindX.Tests/              EditMode tests
 ├── MLGWorks.RebindX.PlayModeTests/      PlayMode tests
-└── Documentation/                       LaTeX source and PDF
+└── Documentation~/                      LaTeX source and PDF (UPM documentation)
 ```
 
 Use `MLGWorks.RebindX` for the manager and services. Use `MLGWorks.RebindX.UI` for `RebindActionUI`, the custom binding selector, device display support, and UI events. The UI assembly requires TextMeshPro and Unity Localization; the core assembly does not require those UI packages.
@@ -322,7 +334,7 @@ Coverage includes persistence, profiles, corrupt data, asset mismatches, composi
 
 ## 📄 Documentation and metadata
 
-The `Documentation/` folder contains the full LaTeX integration guide and generated PDF. Package ID, version, supported Unity version, dependencies, and author information are in [package.json](package.json). See [CHANGELOG.md](CHANGELOG.md) for release history.
+The `Documentation~/` folder contains the full LaTeX integration guide and generated PDF. It follows Unity's UPM documentation convention and is not imported as runtime project content. Package ID, version, supported Unity version, dependencies, and author information are in [package.json](package.json). See [CHANGELOG.md](CHANGELOG.md) for release history.
 
 ## 📜 License
 
