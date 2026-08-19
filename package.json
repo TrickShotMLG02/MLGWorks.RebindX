@@ -5,10 +5,11 @@
   "description": "Runtime rebinding, binding profiles, conflict resolution, persistence, and device-aware UI for Unity's Input System.",
   "unity": "2022.3",
   "unityRelease": "0f1",
+  "license": "MIT",
   "documentationUrl": "https://github.com/TrickShotMLG02/RebindX/blob/master/Assets/MLGWorks.RebindX/README.md",
   "changelogUrl": "https://github.com/TrickShotMLG02/RebindX/blob/master/Assets/MLGWorks.RebindX/CHANGELOG.md",
   "author": {
-    "name": "MLGWorks",
+    "name": "TrickShotMLG02",
     "url": "https://github.com/TrickShotMLG02"
   },
   "keywords": [

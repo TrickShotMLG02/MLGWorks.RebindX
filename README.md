@@ -1,308 +1,329 @@
-# MLGWorks RebindX
+# 🎮 MLGWorks RebindX
 
-MLGWorks RebindX is a small runtime and editor integration layer for Unity's Input System. It provides:
+> A production-minded rebinding framework for Unity's Input System.
 
-- `RebindManager`, which owns an `InputActionAsset` and persists binding overrides.
-- `RebindActionUI`, which connects one input binding to a settings screen and starts interactive rebinding.
-- Composite binding support, including per-part display and reset/cancel handling.
-- Custom inspectors that make selecting actions and bindings easier.
+Build a complete controls menu with runtime rebinding, composite bindings, profiles, conflict handling, safe persistence, device-aware prompts, accessibility events, and replaceable integration services.
 
-RebindX changes binding overrides at runtime. It does not modify the original `.inputactions` asset or permanently change the default bindings.
+RebindX changes **binding overrides at runtime**. It does not edit your `.inputactions` asset or permanently change the default bindings.
 
-## Runtime architecture and extension points
+## ✨ Features
 
-`RebindManager` remains the convenient Unity-facing façade, but its replaceable responsibilities are now separated into small runtime services:
+| Feature | Benefit |
+| --- | --- |
+| 🔁 Interactive rebinding | Keyboard, mouse, gamepad, joystick, touchscreen, XR, and other Input System controls. |
+| 🧩 Composite support | Rebind a whole composite or expose each part as its own row. |
+| 👥 Binding profiles | Independent layouts for keyboard, controller, players, or accessibility. |
+| 🛡️ Safe persistence | Versioned, asset-scoped JSON, atomic writes, corruption quarantine, and explicit results. |
+| ⚔️ Conflict handling | Reject, allow, replace, or swap duplicate bindings. |
+| 🎯 Rebind policies | Schemes, path filters, type filters, magnitude thresholds, retries, timeout, and device removal. |
+| 🖼️ Device-aware UI | Normalized device kinds, glyph keys, prompts, and custom display providers. |
+| ♿ Accessibility hooks | Status events for screen readers, audio, haptics, and custom prompts. |
+| 🧱 Modular services | Replace persistence, paths, and asset ownership without rewriting the UI. |
+| 🧪 Testable | Separate core, UI, EditMode, and PlayMode assemblies. |
 
-- `IRebindPathProvider` resolves the storage directory and file path. The default implementation is `FileSystemRebindPathProvider`.
-- `IBindingOverrideStore` loads and saves overrides. `JsonBindingOverrideStore` is the default persistent implementation, while `InMemoryBindingOverrideStore` is useful for tests, temporary profiles, and custom save flows.
-- `IInputActionAssetProvider` owns enabling and disposing an input asset. `InputActionAssetProvider` handles a normal asset and `GeneratedControlsProvider` handles `PlayerInputControls`.
-- `RebindSession` owns the enabled-state transition for one interactive rebind and restores the action's original state when the operation ends.
+## 🚀 Quick start
 
-The manager's existing Inspector configuration and methods remain compatible. Advanced integrations can replace the default persistence service:
+### Requirements
 
-```csharp
-rebindManager.OverrideStore = new InMemoryBindingOverrideStore();
-```
+- Unity 2022.3 or newer.
+- Unity Input System.
+- TextMeshPro and Unity Localization when using `RebindActionUI`.
+- Newtonsoft JSON is installed through UPM by this package.
 
-For a production backend such as cloud saves, implement `IBindingOverrideStore` and assign it before calling `SaveRebinds` or `LoadRebinds`. Store operations return a `BindingOverrideResult` with a `Code`, `Message`, and `Succeeded` flag. The store receives the active `InputActionAsset`; it does not own the asset or the manager lifetime.
+### Install with UPM
 
-## Requirements
-
-- Unity with the Input System package enabled.
-- The Input System package's `InputActionAsset`, `InputActionReference`, and interactive rebinding APIs.
-
-### Install through UPM
-
-The package root is this directory and contains `package.json`. In Unity, open **Window > Package Manager**, choose **+ > Add package from git URL**, and enter:
+In **Window > Package Manager**, select **+ > Add package from git URL** and enter:
 
 ```text
 https://github.com/TrickShotMLG02/RebindX.git?path=/Assets/MLGWorks.RebindX
 ```
 
-You can also install a local checkout with **Add package from disk** and select this folder's `package.json`. The package declares Unity Input System, Newtonsoft JSON, TextMeshPro, and Localization dependencies. RebindX does not require `MLGWorks.Utils`.
+For a local checkout, choose **Add package from disk** and select this folder's `package.json`. The package ID is `com.mlgworks.rebindx`; see [package.json](package.json) for dependencies and version metadata.
 
-Install `MLGWorks.Utils` separately only if another asset in your project uses it.
+### 1. Create an Input Actions asset
 
-The core runtime assembly is `MLGWorks.RebindX`. The optional UI assembly is `MLGWorks.RebindX.UI`; it contains `RebindActionUI` and its custom inspector and depends on TextMeshPro and Unity Localization. Projects that only need persistence and rebinding services can reference the core assembly without the UI integrations. The test assemblies are `MLGWorks.RebindX.Tests` (EditMode) and `MLGWorks.RebindX.PlayModeTests` (PlayMode).
-
-### Optional UI dependencies
-
-Install or enable TextMeshPro and Unity Localization before using `RebindActionUI`. If those packages are not part of your project, use `MLGWorks.RebindX` directly and provide your own UI around `InputActionReference`, `RebindOptions`, and `IBindingOverrideService`.
-
-## Basic setup
-
-### 1. Create or import an Input Action Asset
-
-Create an Input Actions asset through **Assets > Create > Input Actions**, or use an existing asset. Define your maps, actions, and default bindings as usual.
-
-For example:
+Create or open an Input Actions asset and define maps, actions, bindings, control schemes, and composites as usual:
 
 ```text
 Gameplay
-  Jump     Button   <Keyboard>/space
-  Move     Value    2D Vector composite
+├── Jump       Button       <Keyboard>/space
+└── Move       Value        2D Vector composite
+    ├── Up                  <Keyboard>/w
+    ├── Down                <Keyboard>/s
+    ├── Left                <Keyboard>/a
+    └── Right               <Keyboard>/d
 ```
 
-Enable **Generate C# Class** only if your project needs the generated wrapper. RebindX can work directly with any `InputActionAsset`.
+RebindX works with an ordinary `InputActionAsset` or a generated `PlayerInputControls` wrapper.
 
-### 2. Add a Rebind Manager
+### 2. Add a `RebindManager`
 
-Create an active GameObject, add `RebindManager`, and configure it in the Inspector.
+Create an active GameObject and add `RebindManager`.
 
-Set **Input Action Asset** to the asset that should be used by the game. The manager enables the asset during startup and loads saved overrides. If no asset is assigned, the component uses the generated `PlayerInputControls` wrapper included in the package.
+1. Assign the `InputActionAsset` used by the game.
+2. Choose a persistence location.
+3. Configure the file name and path if needed.
+4. Optionally configure profiles.
 
-`RebindManager` is a normal component and does not enforce a global singleton. Use one manager per input asset/profile when supporting split-screen players, local multiplayer, or separate settings contexts. Assign each `RebindActionUI.rebindManager` explicitly so rows use the intended asset and persistence profile.
+The manager loads saved overrides during startup. It is a normal component, not a global singleton. Use explicit manager references when working with multiple players, assets, or profiles.
 
-### Managing profiles
+### 3. Add a `RebindActionUI` row
 
-Profiles have stable IDs, display names, and independent override files:
+`RebindActionUI` is in the optional `MLGWorks.RebindX.UI` assembly. Add it to a settings-row GameObject and assign:
+
+1. An `InputActionReference`.
+2. The intended `RebindManager`.
+3. A binding using the custom Inspector popup.
+4. Optional TextMeshPro labels and a rebind prompt.
+5. Optional overlay and UnityEvent listeners.
+
+The Inspector stores the binding's stable GUID in `bindingId`, which is safer than relying on an array index.
+
+```csharp
+using MLGWorks.RebindX.Runtime;
+using UnityEngine;
+
+public sealed class RebindButtons : MonoBehaviour
+{
+    [SerializeField] private RebindActionUI row;
+
+    public void Begin() => row.StartInteractiveRebind();
+    public void Cancel() => row.CancelInteractiveRebind();
+    public void Reset() => row.ResetToDefault();
+}
+```
+
+## 🧱 Package architecture
+
+```text
+MLGWorks.RebindX/
+├── package.json                         UPM metadata
+├── MLGWorks.RebindX/Runtime/            Core runtime services
+├── MLGWorks.RebindX/Resources/          Optional generated controls wrapper
+├── MLGWorks.RebindX.UI/                 Optional UI and custom Inspector
+├── MLGWorks.RebindX.Tests/              EditMode tests
+├── MLGWorks.RebindX.PlayModeTests/      PlayMode tests
+└── Documentation/                       LaTeX source and PDF
+```
+
+Use `MLGWorks.RebindX` for the manager and services. Use `MLGWorks.RebindX.UI` for `RebindActionUI`, the custom binding selector, device display support, and UI events. The UI assembly requires TextMeshPro and Unity Localization; the core assembly does not require those UI packages.
+
+## 💾 Persistence
+
+The default JSON store writes a versioned envelope containing the format version, asset/profile identity, and Unity Input System overrides.
+
+| Location | Recommended use |
+| --- | --- |
+| `PersistentDataPath` | Player settings in a shipped game. |
+| `DataPath` | Development tools; may not be writable in a player build. |
+| `Custom` | An explicit directory; it must not be empty. |
+
+The default file is `rebinds.json` below a `Configs` directory in `Application.persistentDataPath`.
+
+Writes use a temporary file before replacement. Malformed or legacy files are moved to timestamped `.corrupt-*.json` files. Saves belonging to another asset/profile are rejected instead of being silently applied.
+
+```csharp
+BindingOverrideResult result = manager.SaveRebinds();
+if (!result.Succeeded)
+    Debug.LogWarning($"Controls were not saved: {result.Code} - {result.Message}");
+```
+
+Result codes include `Success`, `NoData`, `InvalidAsset`, `InvalidPath`, `AssetMismatch`, `UnsupportedVersion`, `CorruptData`, and `IoFailure`. `NoData` is successful when no previous save exists.
+
+```csharp
+manager.SaveRebinds();
+manager.LoadRebinds();
+manager.ResetRebinds();
+```
+
+Successful UI rebinds save automatically. Use explicit calls for Apply/Discard workflows or direct Input System override changes.
+
+## 👥 Binding profiles
+
+Profiles provide stable IDs, display names, and independent override files:
 
 ```csharp
 manager.CreateProfile("keyboard", "Keyboard and Mouse");
 manager.CreateProfile("gamepad", "Controller");
 manager.SwitchProfile("gamepad");
 manager.RenameProfile("gamepad", "Xbox Controller");
-manager.DeleteProfile("keyboard");
 ```
 
-The active profile cannot be deleted. Profile IDs are validated as file-safe identifiers, and profile metadata is persisted beside the configured bindings file. Switching profiles saves the current profile, clears active overrides, and loads the selected profile.
+Profile IDs are file-safe, metadata is persisted beside the binding file, switching saves the current profile before loading the next one, and the active profile cannot be deleted. Use one manager per independent asset/profile context.
 
-### 3. Configure persistence
+## ⚔️ Duplicate bindings
 
-The manager exposes three file location modes:
+Duplicates are rejected by default. Configure the behavior with `RebindOptions`:
 
-| Location | Result |
+| Resolution | Behavior |
 | --- | --- |
-| `PersistentDataPath` | Stores overrides in `Application.persistentDataPath/<Relative Path>/<File Name>`. Recommended for player settings. |
-| `DataPath` | Stores overrides below `Application.dataPath/<Relative Path>/<File Name>`. Usually useful for development tools, not shipped builds. |
-| `Custom` | Stores overrides in the exact **Custom Path** plus **File Name**. The path must not be empty. |
-
-The default file is `rebinds.json` under a `Configs` directory in the persistent data path. The manager creates the directory when saving.
-
-The saved file is a versioned envelope containing Unity Input System binding overrides and an asset/profile identity. Set **Profile Id** when multiple input profiles share a save location; otherwise RebindX generates an identity from the asset structure. Overrides from another profile or asset are rejected without changing the active asset.
-
-Writes use a temporary file and replacement. Malformed or legacy unversioned files are moved to a timestamped `.corrupt-*.json` file and reported as `BindingOverrideResultCode.CorruptData`, so player settings can be recovered without silently applying unsafe data. Unsupported future versions are reported without being deleted.
-
-## Creating a rebind row
-
-Add `RebindActionUI` to a GameObject in your settings UI for each binding the player can change.
-
-In the Inspector:
-
-1. Assign **Action** to an `InputActionReference`.
-2. Assign the appropriate **Rebind Manager** for the input profile that owns this row. This explicit reference is important when using multiple profiles or input assets.
-3. Select the target binding in the **Binding** popup.
-4. Optionally assign **Binding Text** and **Action Label** TextMeshPro components.
-5. Optionally assign a **Rebind Text** prompt or a **Rebind Overlay** GameObject.
-6. Use **Display Options** to control how Unity formats the binding display.
-
-The custom inspector writes the selected binding's stable GUID to `bindingId`. This is preferable to selecting a binding by array index because indices can change when bindings are edited.
-
-At runtime, the row can be controlled with:
+| `Reject` | Keep the previous binding, report the conflict, and optionally retry. |
+| `Allow` | Permit the duplicate control. |
+| `Replace` | Keep the new control and remove the conflicting override. |
+| `Swap` | Exchange the new control with the target's previous effective control. |
 
 ```csharp
-using MLGWorks.RebindX.Runtime;
-using UnityEngine;
-
-public class RebindButton : MonoBehaviour
-{
-    [SerializeField] private RebindActionUI rebindRow;
-
-    public void Rebind()
-    {
-        rebindRow.StartInteractiveRebind();
-    }
-
-    public void CancelRebind()
-    {
-        rebindRow.CancelInteractiveRebind();
-    }
-
-    public void ResetBinding()
-    {
-        rebindRow.ResetToDefault();
-    }
-}
-```
-
-`StartInteractiveRebind()` disables the target action while Unity waits for input, then restores its previous enabled state when the operation completes or is cancelled. Calling `CancelInteractiveRebind()` while idle is safe.
-
-The session also restores the original action-map and action-asset enabled states. A rebind cannot accidentally enable unrelated actions that were disabled before the operation.
-
-### Rebind policy
-
-Each `RebindActionUI` has a **Rebind Policy** configuration. It can restrict accepted controls with binding groups, required control paths, excluded paths, expected control types, and a minimum magnitude. The default cancel control is `<Keyboard>/escape`.
-
-Duplicate bindings are rejected by default. RebindX raises `duplicateBindingEvent` with the conflicting action name and control path, restores the previous binding, and retries up to **Maximum Duplicate Retries**. Set `Duplicate Binding Policy` to `Allow` when duplicate controls are intentional. A retry limit of zero rejects the attempted binding and ends the operation immediately.
-
-For user-facing conflict resolution, set `duplicateBindingResolution` to `Replace` or `Swap`. `Replace` removes the conflicting binding override and keeps the new binding. `Swap` moves the target binding's previous path onto the conflicting binding. `duplicateResolutionEvent` reports the selected resolution. The legacy `Duplicate Binding Policy = Allow` setting takes precedence for compatibility.
-
-**Duplicate Binding Scope** controls whether conflicts are checked in the current action map or across the entire input asset. Bindings assigned exclusively to different control-scheme groups are not treated as conflicts; bindings with no groups are considered global. Set **Timeout Seconds** to cancel a rebind after that duration. `timeoutRebindEvent` is raised before cancellation. Removing an input device also cancels an active operation by default.
-
-The same options are available from code:
-
-```csharp
-rebindRow.rebindOptions = new RebindOptions
+row.rebindOptions = new RebindOptions
 {
     bindingGroup = "Gamepad",
     expectedControlType = "Button",
-    maximumDuplicateRetries = 2,
-    duplicateBindingPolicy = DuplicateBindingPolicy.Reject
+    duplicateBindingPolicy = DuplicateBindingPolicy.Reject,
+    duplicateBindingResolution = DuplicateBindingResolution.Replace,
+    duplicateBindingScope = DuplicateBindingScope.EntireAsset,
+    maximumDuplicateRetries = 2
 };
-rebindRow.rebindOptions.controlPathsToExclude.Add("<Gamepad>/leftStick");
 ```
 
-Subscribe to `duplicateBindingEvent` to display a user-facing conflict message. Its arguments are the row, the conflicting action name, and the rejected control path.
+Use `duplicateBindingEvent` for a user-facing conflict message and `duplicateResolutionEvent` for Replace/Swap feedback. Exclusive control-scheme groups are not treated as conflicts; ungrouped bindings are global. The legacy `duplicateBindingPolicy = Allow` setting takes precedence for compatibility.
 
-`rebindAccessibilityEvent` reports status messages such as `Waiting for input`, `Rebind cancelled`, and `Rebind timed out`. Use it for screen-reader announcements or custom accessibility UI. The assigned overlay GameObject is activated only while an operation is active and is hidden on completion, cancellation, timeout, device removal, disable, or destruction.
+## 🧩 Composite bindings
 
-### Device-aware display
+Reference a composite header when one row should rebind all parts:
 
-`RebindActionUI` exposes `deviceBindingDisplayEvent`, which reports a normalized device kind, glyph key, and prompt. The default provider produces keys such as `keyboard.enter`, `mouse.left_button`, and `gamepad.button_south`. Projects can inject `IDeviceBindingDisplayProvider` to map those keys to their own sprite or glyph system:
+```text
+Move
+└── 2D Vector
+    ├── Up       W
+    ├── Down     S
+    ├── Left     A
+    └── Right    D
+```
+
+RebindX clears stale composite overrides while the operation is in progress, so the display contains only freshly bound parts. Cancelling restores the previous overrides. Reference individual part bindings instead when you want separate rows for Up, Down, Left, and Right.
+
+## 🎯 Rebind policy and lifecycle
+
+`RebindOptions` supports:
+
+- `bindingGroup` for control-scheme filtering.
+- `controlPathsToMatch` and `controlPathsToExclude`.
+- `cancelControlPath`, defaulting to `<Keyboard>/escape`.
+- `expectedControlType`, such as `Button` or `Stick`.
+- `minimumMagnitude` for ignoring weak input.
+- `timeoutSeconds` for automatic cancellation.
+- `cancelWhenDeviceIsRemoved`.
+- Duplicate scope, policy, resolution, and retry count.
+
+RebindX captures and restores the enabled state of the target action, action map, and asset. Cleanup also occurs on cancellation, timeout, device removal, disable, and destruction.
+
+## 🖼️ Device-aware displays
+
+The default `IDeviceBindingDisplayProvider` normalizes controls to `Unknown`, `Keyboard`, `Mouse`, `Gamepad`, `Joystick`, `Touchscreen`, `XR`, or `Pen`. It produces glyph keys such as:
+
+```text
+keyboard.enter
+mouse.left_button
+gamepad.button_south
+```
+
+Connect it to your icon or glyph system:
 
 ```csharp
-rebindRow.bindingDisplayProvider = new MyGlyphProvider();
-rebindRow.deviceBindingDisplayEvent.AddListener((row, device, glyph, prompt) =>
+row.deviceBindingDisplayEvent.AddListener((source, device, glyph, prompt) =>
 {
     glyphView.SetGlyph(glyph);
     promptLabel.text = prompt;
 });
 ```
 
-## Display and UI events
+Implement `IDeviceBindingDisplayProvider` and assign it to `row.bindingDisplayProvider` for a custom sprite atlas or platform naming scheme.
 
-`RebindActionUI` supports optional UnityEvents for UI systems that do not use TextMeshPro directly:
+## ♿ Accessibility and UI events
 
-- `updateBindingUIEvent(RebindActionUI, string displayString, string deviceLayoutName, string controlPath)` is invoked whenever the displayed binding changes.
-- `startRebindEvent(RebindActionUI, RebindingOperation)` fires when waiting for input begins.
-- `stopRebindEvent(RebindActionUI, RebindingOperation)` fires when the operation completes or is cancelled.
+Useful `RebindActionUI` events include:
 
-Example listener:
+- `updateBindingUIEvent` — display string, device layout, and control path.
+- `startRebindEvent` / `stopRebindEvent` — operation lifecycle.
+- `duplicateBindingEvent` — conflicting action and control path.
+- `duplicateResolutionEvent` — Replace or Swap result.
+- `timeoutRebindEvent` — timeout occurred.
+- `rebindAccessibilityEvent` — status messages for screen readers/audio/haptics.
+- `deviceBindingDisplayEvent` — device kind, glyph key, and prompt.
+
+Localization is intentionally event-driven so you can connect your own localization tables and language workflow. The optional overlay is active only during an operation.
+
+## 🔌 Integration points
+
+### Cloud or custom persistence
+
+Implement `IBindingOverrideStore` for cloud saves, encrypted files, platform profiles, or databases:
 
 ```csharp
-private void OnBindingUpdated(RebindActionUI row, string display, string device, string controlPath)
+public sealed class CloudOverrideStore : IBindingOverrideStore
 {
-    // Replace the text with an icon, localized label, or custom device glyph.
-    Debug.Log($"Binding: {display} ({controlPath})");
+    private string json;
+
+    public BindingOverrideResult Save(InputActionAsset asset)
+    {
+        json = asset.SaveBindingOverridesAsJson();
+        // Queue json for your authenticated backend.
+        return BindingOverrideResult.Success("Queued for upload.");
+    }
+
+    public BindingOverrideResult Load(InputActionAsset asset)
+    {
+        if (string.IsNullOrEmpty(json))
+            return BindingOverrideResult.NoData("No cloud data exists.");
+        asset.LoadBindingOverridesFromJson(json);
+        return BindingOverrideResult.Success("Loaded from cloud.");
+    }
+
+    public BindingOverrideResult Delete()
+    {
+        json = null;
+        return BindingOverrideResult.Success("Cloud overrides deleted.");
+    }
 }
 ```
 
-When a composite is being rebound, RebindX clears the old composite overrides first. The display then contains only parts that have been freshly rebound, such as `Up: W`, instead of showing default paths that have not been selected in the current operation. Cancelling restores the previous overrides.
+Assign a custom store through `RebindManager.OverrideStore` or `RebindActionUI.bindingOverrideService`. Keep network work asynchronous in your own layer and apply Input System changes on Unity's main thread.
 
-## Composite bindings
+### Custom paths and assets
 
-Create composites normally in the Input Actions editor. A `RebindActionUI` row should reference the composite header, not one of its individual parts, when the whole composite should be rebound:
+Implement `IRebindPathProvider` for platform-specific paths. Always return stable, writable paths and validate any user-derived identifiers. Use `SetActionAsset(loadedAsset)` for dynamic assets; the previous asset is disabled, the new asset is enabled, and configured overrides are loaded. Use `SetControls(new PlayerInputControls())` for generated wrappers.
 
-```text
-Move
-  2D Vector
-    Up       W
-    Down     S
-    Left     A
-    Right    D
-```
+### Custom UI
 
-RebindX walks the composite parts in order. After a part is completed, the next part becomes active. Duplicate paths within the same composite and conflicts with bindings belonging to other actions are rejected and the operation is restarted for that part.
+Use only the core assembly if you do not want TextMeshPro/Localization. Build around `InputActionReference`, `RebindOptions`, `IBindingOverrideService`, `IBindingOverrideStore`, and Unity's interactive rebinding API.
 
-To expose individual composite parts as separate rows, reference each part binding instead. This is useful when the settings screen has separate controls for Up, Down, Left, and Right.
+## 🧪 Testing
 
-## Resetting and loading settings
+The repository contains `MLGWorks.RebindX.Tests` for EditMode tests and `MLGWorks.RebindX.PlayModeTests` for PlayMode tests. Run them from **Window > General > Test Runner**.
 
-Reset one row with:
+Coverage includes persistence, profiles, corrupt data, asset mismatches, composites, conflict resolution, retries, cancellation, timeout, device lifecycle, display providers, and state restoration. Add project-specific PlayMode tests for actual UI navigation and target hardware because synthetic input does not reproduce every platform's native event path.
 
-```csharp
-rebindRow.ResetToDefault();
-```
+## 🧯 Troubleshooting
 
-For a composite header, this removes overrides from every part. To reset the entire asset, remove all binding overrides and save, or delete the persisted JSON file before the next load.
+| Problem | Check |
+| --- | --- |
+| Package does not compile | Confirm Input System, Newtonsoft JSON, TextMeshPro, and Localization are installed as appropriate. |
+| Saved binding does not appear | Check profile, path, binding GUID, and `BindingOverrideResult`; old overrides intentionally beat edited defaults. |
+| Same control appears on several rows | Check duplicate policy, resolution, scope, and control-scheme groups. |
+| Composite shows stale/default controls | Reference the composite header for a whole-composite rebind and start a fresh operation. |
+| Rebind never completes | Check binding group, path filters, expected type, magnitude, device connection, and timeout. |
+| Settings are lost after asset changes | RebindX rejects asset mismatches by design; provide Reset Controls or implement migration in a custom store. |
 
-The manager also exposes:
+## 📚 API cheat sheet
 
-```csharp
-var manager = FindFirstObjectByType<RebindManager>();
-// Prefer a serialized reference or dependency injection in reusable code.
-manager.SaveRebinds();
-manager.LoadRebinds();
-manager.ResetRebinds();
-```
+| API | Purpose |
+| --- | --- |
+| `RebindManager` | Coordinates the configured asset, persistence, and profiles. |
+| `RebindActionUI` | Interactive row for one binding or composite. |
+| `RebindOptions` | Input filters and conflict/lifecycle policy. |
+| `RebindProfile` | Stable profile ID and display name. |
+| `IBindingOverrideService` | Save/load/reset service. |
+| `IBindingOverrideStore` | Replaceable persistence backend. |
+| `JsonBindingOverrideStore` | Versioned local JSON backend. |
+| `InMemoryBindingOverrideStore` | File-free backend for tests and temporary contexts. |
+| `IRebindPathProvider` | Replaceable path resolution. |
+| `IInputActionAssetProvider` | Replaceable asset/wrapper ownership. |
+| `IDeviceBindingDisplayProvider` | Device, glyph, and prompt mapping. |
+| `BindingOverrideResult` | Explicit outcome with code and message. |
 
-Saving is normally performed automatically after a successful `RebindActionUI` operation. Explicit calls are useful for a dedicated **Apply** button or when binding overrides are changed directly through the Input System API. Check the returned `BindingOverrideResult` when the application needs to surface persistence failures. `ResetRebinds()` removes all active overrides and deletes the persisted file.
+## 📄 Documentation and metadata
 
-## Using a different action asset at runtime
+The `Documentation/` folder contains the full LaTeX integration guide and generated PDF. Package ID, version, supported Unity version, dependencies, and author information are in [package.json](package.json). See [CHANGELOG.md](CHANGELOG.md) for release history.
 
-If the game loads its input asset dynamically, assign it after the manager exists:
+## 📜 License
 
-```csharp
-using UnityEngine.InputSystem;
-using MLGWorks.RebindX.Runtime;
-
-public void UseLoadedAsset(InputActionAsset loadedAsset)
-{
-    rebindManager.SetActionAsset(loadedAsset);
-}
-```
-
-`SetActionAsset` disables the previously managed asset, enables the new one, and loads overrides from the configured file. Passing `null` is rejected.
-
-If using the generated wrapper instead:
-
-```csharp
-var controls = new PlayerInputControls();
-rebindManager.SetControls(controls);
-```
-
-The manager takes ownership of the wrapper and disposes the previously managed wrapper when replaced.
-
-## Common pitfalls
-
-- Do not assign a binding array index manually when the editor popup is available. Use the binding GUID generated by the inspector.
-- Do not start a rebind on an enabled action yourself. RebindX handles the required disable/restore sequence.
-- Do not use an empty Custom Path; the manager throws an `InvalidOperationException` when resolving it.
-- A `RebindActionUI` must reference an action and a valid binding GUID. Invalid or missing references are ignored and logged rather than rebinding an unintended binding.
-- Keep the manager alive while settings rows are active. `RebindActionUI` uses the manager's live action asset when one is available.
-- Do not store player-specific override files in source control. Use `PersistentDataPath` for player settings.
-- If a binding appears unchanged after editing the Input Actions asset, remove the saved override JSON while testing. Saved overrides intentionally take precedence over defaults.
-
-## Testing
-
-The package includes an Editor-only assembly named `MLGWorks.RebindX.Tests`. It tests runtime behavior without testing `MLGWorks.Utils` itself.
-
-Run it from Unity's Test Runner with **EditMode** selected, or from a command line build with the test filter:
-
-```text
-MLGWorks.RebindX.Tests
-```
-
-The suite covers persistence, invalid configuration, binding resolution, normal and composite rebinding, cancellation, duplicate detection, display refreshes, and action lifecycle edge cases.
-
-## Package layout
-
-```text
-MLGWorks.RebindX/
-├── Runtime/       RebindManager and RebindActionUI
-├── Editor/        Custom inspectors
-├── Resources/     Optional generated PlayerInputControls asset/wrapper
-├── Demo/          Sample scene
-└── ../MLGWorks.RebindX.Tests/
-                   RebindX-only EditMode tests
-```
+RebindX is licensed under the [MIT License](LICENSE.md). Copyright © 2026 TrickShotMLG02.
